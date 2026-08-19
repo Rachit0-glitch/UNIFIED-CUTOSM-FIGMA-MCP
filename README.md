@@ -1,12 +1,51 @@
 # Unified Figma MCP
 
-Stage 1 investigation project for a Unified Figma MCP coordinator that can use Plumb and Custom MCP appropriately without modifying either existing backend.
+Unified Figma MCP coordinates Plumb-family and Custom-family Figma capabilities without modifying either original backend.
 
 Correct local path:
 
 ```text
 C:\Users\rachi\OneDrive\Documents\FIGMA UNIFIED MCP
 ```
+
+## Stage 4 Status
+
+Stage 4 turns the Stage 3.5 single-plugin proof of concept into a production Unified runtime foundation:
+
+```text
+Unified MCP -> CapabilityRegistry -> CommandRouter -> ProtocolAdapter -> CommandQueue -> UnifiedBridge -> UnifiedPlugin -> Figma
+```
+
+Primary Stage 4 tools:
+
+```powershell
+node scripts\unified-probe.mjs unified_capabilities
+node scripts\unified-probe.mjs unified_execute '{"capability":"plumb.outline","payload":{}}'
+node scripts\unified-probe.mjs unified_execute '{"capability":"custom.node.read","payload":{"depth":1}}'
+npm run stage4:live
+```
+
+Supported production runtime capabilities:
+
+- `plumb.status`
+- `plumb.outline`
+- `plumb.selection.read`
+- `custom.status`
+- `custom.node.read`
+- `custom.selection.read`
+
+All Stage 4 capabilities are read-only. Original Plumb and original Custom are not modified.
+
+Stage 4 docs:
+
+- `docs/STAGE4_POC_REVIEW.md`
+- `docs/STAGE4_ARCHITECTURE.md`
+- `docs/UNIFIED_PROTOCOL.md`
+- `docs/CAPABILITY_REGISTRY.md`
+- `docs/COMMAND_ROUTING.md`
+- `docs/RUNTIME_LIFECYCLE.md`
+- `docs/STAGE4_TEST_PLAN.md`
+- `docs/STAGE4_RESULTS.md`
 
 ## Stage 1 Status
 

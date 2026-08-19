@@ -1,6 +1,11 @@
-figma.showUI(__html__, { width: 280, height: 180, title: "Unified Runtime POC" });
+figma.showUI(__html__, { width: 300, height: 190, title: "Unified Runtime" });
 
-const PLUGIN_VERSION = "0.1.0-stage3.5";
+const PROTOCOL_VERSION = "1.0";
+const PLUGIN_VERSION = "0.2.0-stage4";
+
+function pluginError(code, message, details) {
+  return { code, message, ...(details ? { details } : {}) };
+}
 
 function serializeNode(node, depth) {
   const out = {
@@ -20,21 +25,47 @@ function serializeNode(node, depth) {
   return out;
 }
 
+function normalizeDepth(payload, fallback = 1) {
+  const depth = Number(payload && payload.depth !== undefined ? payload.depth : fallback);
+  if (!Number.isInteger(depth) || depth < 0 || depth > 6) {
+    throw new Error("Depth must be an integer from 0 to 6.");
+  }
+  return depth;
+}
+
 function topLevelScreen(node) {
   return ["FRAME", "COMPONENT", "INSTANCE", "SECTION"].includes(node.type);
 }
 
-async function plumbOutline() {
+async function runtimeStatus(family) {
   await figma.loadAllPagesAsync();
-  const pages = figma.root.children.map((page) => ({
-    name: page.name,
-    screens: page.children.filter(topLevelScreen).map((node) => ({
-      id: node.id,
-      name: node.name,
-      type: node.type,
-      box: "width" in node && "height" in node ? { w: node.width, h: node.height } : null
-    }))
-  }));
+  return {
+    source: "unified-plugin",
+    family,
+    pluginVersion: PLUGIN_VERSION,
+    protocolVersion: PROTOCOL_VERSION,
+    file: { name: figma.root.name || null },
+    currentPage: figma.currentPage.name,
+    pageCount: figma.root.children.length,
+    selectionCount: figma.currentPage.selection.length
+  };
+}
+
+async function plumbOutline(payload) {
+  await figma.loadAllPagesAsync();
+  const pageFilter = payload && typeof payload.page === "string" ? payload.page.toLowerCase() : null;
+  const pages = figma.root.children
+    .filter((page) => !pageFilter || page.name.toLowerCase().includes(pageFilter))
+    .map((page) => ({
+      name: page.name,
+      screens: page.children.filter(topLevelScreen).map((node) => ({
+        id: node.id,
+        el: node.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || node.id,
+        name: node.name,
+        type: node.type,
+        box: "width" in node && "height" in node ? { w: node.width, h: node.height } : null
+      }))
+    }));
   return {
     source: "unified-plugin",
     file: { name: figma.root.name || null },
@@ -47,34 +78,117 @@ async function plumbOutline() {
   };
 }
 
-async function customNode(args) {
-  const depth = Math.max(0, Math.min(6, Number(args && args.depth !== undefined ? args.depth : 1)));
-  const node = args && args.nodeId ? await figma.getNodeByIdAsync(args.nodeId) : figma.currentPage;
-  if (!node) throw new Error(`Node not found: ${args.nodeId}`);
+async function plumbSelection(payload) {
+  const depth = normalizeDepth(payload, 2);
+  const selection = figma.currentPage.selection.map((node) => serializeNode(node, depth));
+  return {
+    source: "unified-plugin",
+    currentPage: figma.currentPage.name,
+    selectionCount: selection.length,
+    selection
+  };
+}
+
+async function customNode(payload) {
+  const depth = normalizeDepth(payload, 1);
+  const node = payload && payload.nodeId ? await figma.getNodeByIdAsync(payload.nodeId) : figma.currentPage;
+  if (!node) throw new Error(`Node not found: ${payload.nodeId}`);
   return { doc: serializeNode(node, depth) };
 }
 
-async function dispatch(cmd, args) {
-  switch (cmd) {
-    case "runtime-status":
-      return { pluginVersion: PLUGIN_VERSION, currentPage: figma.currentPage.name };
-    case "plumb-outline":
-      return await plumbOutline();
-    case "custom-node":
-      return await customNode(args || {});
-    default:
-      throw new Error(`Unknown unified runtime command: ${cmd}`);
+async function customSelection(payload) {
+  const depth = normalizeDepth(payload, 1);
+  return {
+    doc: {
+      id: figma.currentPage.id,
+      name: figma.currentPage.name,
+      type: "SELECTION",
+      childCount: figma.currentPage.selection.length,
+      children: figma.currentPage.selection.map((node) => serializeNode(node, depth))
+    }
+  };
+}
+
+const handlers = {
+  plumb: {
+    status: async () => await runtimeStatus("plumb"),
+    outline: async (payload) => await plumbOutline(payload),
+    "selection.read": async (payload) => await plumbSelection(payload)
+  },
+  custom: {
+    status: async () => await runtimeStatus("custom"),
+    "node.read": async (payload) => await customNode(payload),
+    "selection.read": async (payload) => await customSelection(payload)
+  }
+};
+
+function validateEnvelope(envelope) {
+  if (!envelope || typeof envelope !== "object") {
+    throw pluginError("INVALID_COMMAND", "Command envelope must be an object.");
+  }
+  if (envelope.protocolVersion !== PROTOCOL_VERSION) {
+    throw pluginError("UNSUPPORTED_PROTOCOL_VERSION", `Unsupported protocol version: ${envelope.protocolVersion || "missing"}.`, {
+      expected: PROTOCOL_VERSION,
+      received: envelope.protocolVersion
+    });
+  }
+  if (!envelope.requestId || typeof envelope.requestId !== "string") {
+    throw pluginError("INVALID_COMMAND", "Command envelope requires requestId.");
+  }
+  if (!handlers[envelope.family]) {
+    throw pluginError("INVALID_COMMAND", `Unsupported command family: ${envelope.family || "missing"}.`);
+  }
+  if (!handlers[envelope.family][envelope.operation]) {
+    throw pluginError("INVALID_COMMAND", `Unsupported operation: ${envelope.family}.${envelope.operation}.`);
+  }
+}
+
+async function dispatch(envelope) {
+  validateEnvelope(envelope);
+  return await handlers[envelope.family][envelope.operation](envelope.payload || {});
+}
+
+async function handleCommand(envelope) {
+  const start = Date.now();
+  const request = envelope && typeof envelope === "object" ? envelope : {};
+  try {
+    const result = await dispatch(envelope);
+    return {
+      protocolVersion: PROTOCOL_VERSION,
+      requestId: envelope.requestId,
+      ok: true,
+      family: envelope.family,
+      operation: envelope.operation,
+      result,
+      error: null,
+      durationMs: Date.now() - start
+    };
+  } catch (error) {
+    const normalized = error && error.code
+      ? error
+      : pluginError("FIGMA_API_ERROR", error instanceof Error ? error.message : String(error));
+    return {
+      protocolVersion: PROTOCOL_VERSION,
+      requestId: typeof request.requestId === "string" ? request.requestId : "missing",
+      ok: false,
+      family: typeof request.family === "string" ? request.family : "unknown",
+      operation: typeof request.operation === "string" ? request.operation : "unknown",
+      result: null,
+      error: normalized,
+      durationMs: Date.now() - start
+    };
   }
 }
 
 figma.ui.onmessage = async (message) => {
-  if (!message || message.kind !== "runtime-request") return;
-  try {
-    const payload = await dispatch(message.cmd, message.args || {});
-    figma.ui.postMessage({ kind: "runtime-reply", reqId: message.reqId, ok: true, payload });
-  } catch (error) {
-    figma.ui.postMessage({ kind: "runtime-reply", reqId: message.reqId, ok: false, error: error instanceof Error ? error.message : String(error) });
-  }
+  if (!message || message.kind !== "runtime-command") return;
+  const response = await handleCommand(message.envelope);
+  figma.ui.postMessage({ kind: "runtime-response", envelope: response });
 };
 
-figma.ui.postMessage({ kind: "plugin-ready", pluginVersion: PLUGIN_VERSION, currentPage: figma.currentPage.name });
+figma.ui.postMessage({
+  kind: "plugin-ready",
+  pluginVersion: PLUGIN_VERSION,
+  protocolVersion: PROTOCOL_VERSION,
+  currentPage: figma.currentPage.name
+});

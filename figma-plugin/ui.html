@@ -8,16 +8,17 @@
   .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; background: #f24822; }
   .dot.ok { background: #14ae5c; }
   #status { color: #555; margin-top: 6px; }
-  #log { margin-top: 10px; font-family: ui-monospace, monospace; font-size: 10px; color: #777; white-space: pre-wrap; max-height: 90px; overflow: auto; }
+  #log { margin-top: 10px; font-family: ui-monospace, monospace; font-size: 10px; color: #777; white-space: pre-wrap; max-height: 98px; overflow: auto; }
 </style>
 </head>
 <body>
-  <h1>Unified Runtime POC</h1>
+  <h1>Unified Runtime</h1>
   <div><span id="dot" class="dot"></span><span id="status">connecting...</span></div>
   <div id="log"></div>
 <script>
   const PORT = 39417;
-  const PLUGIN_VERSION = "0.1.0-stage3.5";
+  const PROTOCOL_VERSION = "1.0";
+  const PLUGIN_VERSION = "0.2.0-stage4";
   const dot = document.getElementById("dot");
   const statusEl = document.getElementById("status");
   const logEl = document.getElementById("log");
@@ -43,7 +44,7 @@
     ws.onopen = () => {
       setStatus(true);
       line("connected");
-      ws.send(JSON.stringify({ type: "hello", pluginVersion: PLUGIN_VERSION }));
+      ws.send(JSON.stringify({ type: "hello", pluginVersion: PLUGIN_VERSION, protocolVersion: PROTOCOL_VERSION }));
     };
     ws.onclose = () => {
       setStatus(false);
@@ -53,9 +54,9 @@
     ws.onmessage = (event) => {
       let msg;
       try { msg = JSON.parse(event.data); } catch { return; }
-      if (msg.type === "request") {
-        line("-> " + msg.cmd);
-        parent.postMessage({ pluginMessage: { kind: "runtime-request", reqId: msg.reqId, cmd: msg.cmd, args: msg.args } }, "*");
+      if (msg.type === "command" && msg.envelope) {
+        line("-> " + msg.envelope.family + "." + msg.envelope.operation);
+        parent.postMessage({ pluginMessage: { kind: "runtime-command", envelope: msg.envelope } }, "*");
       }
     };
   }
@@ -72,8 +73,8 @@
       line("plugin ready: " + msg.currentPage);
       return;
     }
-    if (msg.kind === "runtime-reply" && ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: "reply", reqId: msg.reqId, ok: msg.ok, payload: msg.payload, error: msg.error }));
+    if (msg.kind === "runtime-response" && ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "response", envelope: msg.envelope }));
     }
   };
 

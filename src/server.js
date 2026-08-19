@@ -6,6 +6,11 @@ import { PlumbAdapter } from "./adapters/plumb.js";
 import { CustomAdapter } from "./adapters/custom.js";
 import { UnifiedRuntimeBridge } from "./runtime/unifiedBridge.js";
 import { UnifiedRuntimeService } from "./runtime/service.js";
+import { CapabilityRegistry } from "./runtime/capabilities.js";
+import { CommandQueue } from "./runtime/commandQueue.js";
+import { CommandRouter } from "./runtime/commandRouter.js";
+import { PlumbProtocolAdapter } from "./runtime/protocolAdapters/plumb.js";
+import { CustomProtocolAdapter } from "./runtime/protocolAdapters/custom.js";
 import { SimpleMcpServer } from "./mcp/server.js";
 import { errorShape } from "./errors.js";
 import { textResult } from "./utils.js";
@@ -27,7 +32,25 @@ export function createCoordinator(env = process.env) {
     })
   );
   const runtimeBridge = new UnifiedRuntimeBridge({ ...config.runtime, logger });
-  const runtime = new UnifiedRuntimeService({ bridge: runtimeBridge, logger });
+  const capabilityRegistry = new CapabilityRegistry();
+  const commandQueue = new CommandQueue({ logger });
+  const commandRouter = new CommandRouter({
+    registry: capabilityRegistry,
+    queue: commandQueue,
+    bridge: runtimeBridge,
+    logger,
+    adapters: new Map([
+      ["plumb", new PlumbProtocolAdapter()],
+      ["custom", new CustomProtocolAdapter()]
+    ])
+  });
+  const runtime = new UnifiedRuntimeService({
+    bridge: runtimeBridge,
+    router: commandRouter,
+    registry: capabilityRegistry,
+    queue: commandQueue,
+    logger
+  });
   const coordinator = new UnifiedCoordinator({ registry, logger });
   coordinator.runtime = runtime;
   const cleanup = () => Promise.all([registry.close(), runtimeBridge.close()]).catch(() => {});
@@ -77,6 +100,33 @@ export function createTools(coordinator) {
         additionalProperties: false
       },
       handler: async (args) => textResult(await coordinator.probeBackend(args))
+    },
+    unified_capabilities: {
+      name: "unified_capabilities",
+      description: "Return the Stage 4 production runtime capabilities currently supported by Unified MCP.",
+      inputSchema: { type: "object", properties: {}, additionalProperties: false },
+      handler: safeRuntime(() => coordinator.runtime.capabilities())
+    },
+    unified_execute: {
+      name: "unified_execute",
+      description: "Execute one explicit Stage 4 capability through the production Unified runtime path.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          capability: { type: "string" },
+          payload: { type: "object" },
+          metadata: { type: "object" }
+        },
+        required: ["capability"],
+        additionalProperties: false
+      },
+      handler: async (args) => {
+        try {
+          return textResult(await coordinator.runtime.execute(args));
+        } catch (error) {
+          return textResult({ ok: false, error: errorShape(error), runtime: coordinator.runtime.bridge.status(), queue: coordinator.runtime.queue.status() });
+        }
+      }
     },
     unified_runtime_status: {
       name: "unified_runtime_status",
