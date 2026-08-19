@@ -69,3 +69,17 @@ Stage 2 docs:
 - `docs/STATUS_MODEL.md`
 - `docs/ERROR_MODEL.md`
 
+
+## Stage 3 Status
+
+Stage 3 investigated automated backend handoff. Result: **AUTOMATED HANDOFF BLOCKED** under the current two-plugin architecture. Unified MCP can observe manual backend changes, but it cannot legitimately launch the inactive Figma plugin without a new plugin architecture or fragile UI automation.
+
+Stage 3 docs:
+
+- `docs/STAGE3_INVESTIGATION.md`
+- `docs/HANDOFF_STATE_MACHINE.md`
+- `docs/BACKEND_LIFECYCLE.md`
+- `docs/STAGE3_TEST_PLAN.md`
+- `docs/STAGE3_RESULTS.md`
+- `docs/HANDOFF_BLOCKER.md`
+- `docs/RUNTIME_ALTERNATIVES.md`
