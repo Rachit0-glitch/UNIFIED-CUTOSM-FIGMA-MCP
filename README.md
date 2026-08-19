@@ -5,7 +5,7 @@ Stage 1 investigation project for a Unified Figma MCP coordinator that can use P
 Correct local path:
 
 ```text
-C:\Users\rachi\OneDrive\Documents\figma-unified-mcp
+C:\Users\rachi\OneDrive\Documents\FIGMA UNIFIED MCP
 ```
 
 ## Stage 1 Status
@@ -42,3 +42,30 @@ node scripts\custom-mcp-sdk-probe.mjs --wait-paired --read --write
 ```
 
 The script starts the existing Custom MCP server as a child process, talks MCP over stdio using the MCP SDK installed in `FIGMA-CUSTOM-MCP`, and optionally verifies status, read, write, and cleanup.
+
+## Stage 2 Status
+
+Stage 2 adds the first real Unified MCP coordinator runtime:
+
+```powershell
+npm run start
+```
+
+Diagnostic helpers:
+
+```powershell
+node scripts\unified-probe.mjs unified_status
+node scripts\unified-probe.mjs unified_probe_backend '{"backend":"plumb"}'
+node scripts\unified-probe.mjs unified_probe_backend '{"backend":"custom"}'
+node scripts\unified-live-sequence.mjs
+```
+
+Stage 2 docs:
+
+- `docs/STAGE2_ARCHITECTURE.md`
+- `docs/STAGE2_TEST_PLAN.md`
+- `docs/STAGE2_RESULTS.md`
+- `docs/BACKEND_ADAPTERS.md`
+- `docs/STATUS_MODEL.md`
+- `docs/ERROR_MODEL.md`
+
