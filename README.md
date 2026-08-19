@@ -1,25 +1,44 @@
-# figma-unified-mcp
+# Unified Figma MCP
 
-New, separate investigation project for a unified Figma MCP capability layer.
+Stage 1 investigation project for a Unified Figma MCP coordinator that can use Plumb and Custom MCP appropriately without modifying either existing backend.
 
-This project is intentionally separate from the existing Custom MCP repository at:
+Correct local path:
 
-`C:\Users\rachi\OneDrive\Documents\FIGMA-CUSTOM-MCP`
+```text
+C:\Users\rachi\OneDrive\Documents\figma-unified-mcp
+```
 
-Current phase: investigation and architecture only. No existing Plumb or Custom MCP files were modified.
+## Stage 1 Status
 
-## Documents
+Stage 1 is documentation and verification only. The repo currently contains architecture docs, test results, and a Custom MCP SDK probe. No production coordinator implementation has been added yet.
 
-- `docs/CURRENT_SYSTEM.md` - observed Plumb, Custom MCP, Codex, and live runtime state.
-- `docs/PROBLEM_STATEMENT.md` - verified symptoms, hypotheses, and constraints.
-- `docs/ARCHITECTURE_OPTIONS.md` - options and recommendation.
-- `docs/CAPABILITY_MATRIX.md` - observed capability overlap and gaps.
-- `docs/PROTOCOL_NOTES.md` - transports, ports, message shapes, lifecycle notes.
-- `docs/IMPLEMENTATION_PLAN.md` - staged plan and first proof of concept.
+## Key Finding
 
-## Boundary
+Plumb and Custom both work as real Figma MCP paths, but the current Figma workflow supports one active MCP plugin bridge at a time. Unified MCP should therefore expose explicit backend health and clear switch prompts.
 
-Existing systems are read-only dependencies during this phase. Implementation should not begin until the architecture report is approved.
+## Docs
 
-- docs/FIRST_REPORT.md - required first report and recommendation.
+- `docs/CURRENT_SYSTEM.md`
+- `docs/PLUMB_ARCHITECTURE.md`
+- `docs/CUSTOM_MCP_ARCHITECTURE.md`
+- `docs/PROTOCOL_MAP.md`
+- `docs/CAPABILITY_MATRIX.md`
+- `docs/ARCHITECTURE_OPTIONS.md`
+- `docs/FAILURE_ANALYSIS.md`
+- `docs/IMPLEMENTATION_RECOMMENDATION.md`
+- `docs/TEST_PLAN.md`
+- `docs/STAGE1_RESULTS.md`
 
+## Diagnostic Script
+
+```text
+scripts/custom-mcp-sdk-probe.mjs
+```
+
+Example:
+
+```powershell
+node scripts\custom-mcp-sdk-probe.mjs --wait-paired --read --write
+```
+
+The script starts the existing Custom MCP server as a child process, talks MCP over stdio using the MCP SDK installed in `FIGMA-CUSTOM-MCP`, and optionally verifies status, read, write, and cleanup.

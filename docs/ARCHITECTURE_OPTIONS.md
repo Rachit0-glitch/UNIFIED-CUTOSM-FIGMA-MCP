@@ -1,97 +1,65 @@
 # Architecture Options
 
-## Option A: MCP proxy with explicit namespacing
+## Option A: Thin Router MCP
 
-```text
-LLM -> Unified MCP -> Plumb MCP
-                  -> Custom MCP
-```
+A Unified MCP server exposes one tool surface and routes each call to either Plumb or Custom based on capability.
 
 Pros:
 
-- Smallest first implementation.
-- Preserves existing projects unchanged.
-- Clear observability and routing.
-- Useful for health/status and schema inventory.
+- Smallest Stage 2 implementation.
+- Preserves Plumb and Custom as independent projects.
+- Easy to reason about and test.
 
 Cons:
 
-- Does not itself solve two-plugin runtime conflict.
-- Requires both backend MCPs to be callable and their plugin runtimes paired.
-- Can make the system appear unified while Figma execution remains fragmented.
+- Must handle active-plugin switching because the user's Figma workflow currently supports one connected MCP bridge at a time.
+- Needs backend lifecycle/error normalization.
 
-Fit: good U1 prototype, insufficient final architecture.
+## Option B: Managed Backend Coordinator
 
-## Option B: Unified MCP plus runtime coordinator
-
-```text
-LLM -> Unified MCP -> backend MCP adapters
-                  -> runtime/session coordinator
-                  -> existing Plumb and Custom plugin paths, serialized
-```
+A Unified MCP server owns child processes for Plumb and Custom, performs health checks, and routes calls through adapters.
 
 Pros:
 
-- Keeps existing systems mostly unchanged.
-- Adds health, locks, request IDs, and mutation serialization.
-- Can prove whether dual plugin runtimes are actually viable before deeper changes.
+- Most deterministic from an agent perspective.
+- Can normalize MCP, bridge, plugin, and tool errors.
+- Can prevent duplicate Custom `39217` listener conflicts.
 
 Cons:
 
-- Still depends on two Figma plugins if operations route through both backends.
-- Cannot fix plugin lifecycle exclusivity if Figma cannot keep both active.
-- Requires robust detection of paired/not paired state from both backends.
+- More process management complexity.
+- Still cannot force both Figma plugins to be paired if the Figma UI only allows one active bridge.
 
-Fit: best next architecture for investigation and first real POC.
+## Option C: Shared Figma Plugin
 
-## Option C: Single unified Figma plugin/executor implementing both protocols
-
-```text
-LLM -> Unified MCP / adapters -> shared bridge -> one plugin -> Figma
-```
+Create a new single Figma plugin that implements both Plumb-like and Custom-like bridge commands.
 
 Pros:
 
-- Directly targets one authoritative Figma executor.
-- Removes manual switching if implemented correctly.
-- Gives one place for serialization, state, and recovery.
+- Solves one-active-plugin limitation at the Figma layer.
+- Cleanest long-term runtime model.
 
 Cons:
 
-- Highest compatibility risk.
-- Plumb protocol support may require duplicating or adapting Plumb's bridge/plugin behavior.
-- May require modifying Custom MCP or replacing plugin paths.
-- Must handle Plumb HTTP asset channel and request vocabulary.
+- Not Stage 2-sized.
+- Risks reimplementing or vendoring Plumb behavior.
+- Violates the current instruction to avoid modifying/replacing Plumb and Custom during Stage 1.
 
-Fit: likely long-term architecture if dual-plugin runtime proves unreliable, but not the first coding step.
+## Option D: Documentation-Only Manual Switch
 
-## Option D: Shared bridge, separate MCPs, single plugin adapter
-
-```text
-Plumb MCP -> adapter bridge --+
-Custom MCP -> adapter bridge -+-> single plugin -> Figma
-```
+Do not coordinate backend processes; document when the user must switch plugins.
 
 Pros:
 
-- Can preserve backend MCP entry points for clients.
-- Single Figma plugin runtime.
-- Potentially less client-facing churn.
+- Lowest implementation risk.
+- Matches current live workflow.
 
 Cons:
 
-- Still protocol-heavy.
-- Plumb server expects its own bridge semantics.
-- More moving parts than Option C if Unified MCP also exists.
-
-Fit: alternative if MCP-level proxying is less important than runtime consolidation.
+- Poor agent ergonomics.
+- No unified tool contract.
+- Easy to accidentally call the wrong backend.
 
 ## Recommendation
 
-Use Option B as the immediate investigative POC path, with Option C as the target if testing proves two plugin runtimes cannot coexist reliably.
-
-Reason:
-
-- Option A is useful but risks faking success.
-- Option B can answer the critical unknowns without modifying Plumb or Custom.
-- Option C should wait until we have hard evidence that one executor is required and enough protocol notes to implement it safely.
+Start Stage 2 with Option B in a deliberately narrow form: a managed backend coordinator with explicit backend status, read-only health tools, and a small capability router. Do not attempt Option C until the router proves the required behavior and the plugin switching limitation remains the dominant bottleneck.
