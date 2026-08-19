@@ -1,0 +1,13 @@
+{
+  "name": "Unified Runtime POC",
+  "id": "unified-figma-runtime-poc-local-dev",
+  "api": "1.0.0",
+  "main": "code.js",
+  "ui": "ui.html",
+  "editorType": ["figma"],
+  "documentAccess": "dynamic-page",
+  "networkAccess": {
+    "allowedDomains": ["ws://localhost:39417"],
+    "reasoning": "Connects only to the local Unified MCP proof-of-concept bridge on 127.0.0.1:39417. No remote network access or telemetry."
+  }
+}

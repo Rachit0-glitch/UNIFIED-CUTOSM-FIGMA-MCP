@@ -23,6 +23,12 @@ export function loadConfig(env = process.env) {
       args: splitArgs(env.UNIFIED_CUSTOM_ARGS) || [path.join(customRepo, "dist", "index.js")],
       cwd: env.UNIFIED_CUSTOM_CWD || customRepo,
       port: Number(env.FIGMA_CUSTOM_MCP_PORT || 39217)
+    },
+    runtime: {
+      port: Number(env.UNIFIED_RUNTIME_PORT || 39417),
+      wsModulePath: env.UNIFIED_WS_MODULE || path.join(customRepo, "node_modules", "ws", "wrapper.mjs"),
+      requestTimeoutMs: Number(env.UNIFIED_RUNTIME_TIMEOUT_MS || 8000)
     }
   };
 }
+
