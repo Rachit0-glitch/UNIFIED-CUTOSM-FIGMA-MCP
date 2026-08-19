@@ -1,0 +1,13 @@
+{
+  "name": "figma-unified-mcp",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Investigation and future implementation home for a unified Plumb + Custom Figma MCP orchestration layer.",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"No implementation tests yet; investigation phase only.\""
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
