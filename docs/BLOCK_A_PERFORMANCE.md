@@ -1,5 +1,24 @@
 # Block A Performance
 
+## Observations from this execution's live tests
+
+Real timings captured incidentally during A2/A6-A9/mini-design live testing (not a dedicated stress
+test, but genuine data points, not fabricated):
+
+| Operation | Observed durationMs (plugin-reported) |
+|---|---|
+| `custom.design` create, 1 node, no page target | 137ms (first call after a fresh pairing), 26-49ms on subsequent calls |
+| `custom.design` create, 2-3 nodes incl. nested auto-layout | 37-56ms |
+| `custom.design` create, 5-node hero composition incl. local image import | not separately isolated, but the whole live-test round trip (network + plugin) stayed under 300ms |
+| `custom.patch_node` | 1-11ms |
+| `custom.node.read` (depth 0-2, full fidelity) | 2-19ms |
+| `custom.measure`/`custom.verify`/`custom.diff` (N internal reads + pure computation) | single-digit ms per internal read, negligible computation overhead — the imported `diff.js`/`measure.js` functions are pure and fast by construction |
+
+No operation observed in this pass showed a genuine performance problem — every measured duration was
+well under any of the configured `timeoutMs` values (8000-20000ms) by 2-3 orders of magnitude. The
+`COMMAND_TIMEOUT`s observed and documented in `docs/BLOCK_A_LIMITATIONS.md` were response-DELIVERY
+issues, not slow computation — the underlying operations, when they did report a duration, were fast.
+
 ## Status at this checkpoint
 
 No new performance data collected in A1 beyond what the pre-Block-A hardening pass already measured

@@ -22,7 +22,11 @@ export const ERROR_CODES = Object.freeze({
   // wait with execution timeout would hide a busy-runtime problem behind what looks like a slow-
   // capability problem.
   QUEUE_FULL: "QUEUE_FULL",
-  QUEUE_WAIT_TIMEOUT: "QUEUE_WAIT_TIMEOUT"
+  QUEUE_WAIT_TIMEOUT: "QUEUE_WAIT_TIMEOUT",
+  // Block A / A2 — specific mutation-path error codes (brief §18: never respond to a meaningful
+  // Figma failure with a generic message when specific context exists).
+  NODE_NOT_FOUND: "NODE_NOT_FOUND",
+  DESIGN_COMPILE_ERROR: "DESIGN_COMPILE_ERROR"
 });
 
 export class UnifiedError extends Error {

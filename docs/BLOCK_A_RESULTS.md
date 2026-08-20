@@ -1,103 +1,45 @@
 # Block A Results
 
-**This is a checkpoint document, updated after each integration batch — not a one-time final report.**
-Block A's own brief mandates batch-by-batch integration with real-Figma testing after each batch
-(§25-26), explicitly warning against integrating many operations and testing only at the end. This
-document reflects exactly one batch (A1) completed so far, honestly, rather than a premature full-Block-A
-verdict.
+This document is superseded in detail by `docs/BLOCK_A_FINAL_REPORT.md` (the authoritative, exact-format
+final report) — kept here as a shorter summary consistent with it, and as the historical record of how
+this execution progressed batch by batch (A1 → A2 → A10 → A6/A7/A9 → mini-design acceptance).
 
-## Result (checkpoint after A1)
+## Result
 
 **UNIFIED CAPABILITY INTEGRATION: PARTIAL**
 
-Real, verified progress exists (full inventory of both source systems, an architecture decision with a
-working precedent, and one fully real-Figma-tested integration batch). Design-critical categories —
-create, update, delete, typography, appearance, layout, hierarchy, P2 advanced operations, and P3
-diff/verify/measure — remain entirely unintegrated. This is not a failure of A1; it is simply that A1
-was scoped to reads only, per the batch plan, and the remaining ~10 batches have not been executed yet.
+Substantial, real, real-Figma-verified progress: 28 capabilities now registered (up from 6 before this
+execution), covering full-fidelity reads, the complete create/update/delete/reorder write path,
+hierarchy operations, component/instance workflows, P2 advanced operations (masks, paint styles,
+variables), and the complete P3 inspect→measure→diff→correct→verify→idempotency loop — all demonstrated
+against real Figma, not merely wired. PARTIAL rather than COMPLETE because a handful of brief-mandated
+checklist items are genuinely not done: a large-tree stress test, independent live verification of a few
+A7/A9 capabilities beyond schema+plugin wiring, and A11 (Plumb capability completion). See
+`docs/BLOCK_A_FINAL_REPORT.md` §32-equivalent accounting for the full item-by-item breakdown.
 
-## Capability inventory
+## Capability inventory and breakdown
 
-- Plumb: 23 tools inspected (source-verified via `FIGMA/PLUMB_GAP_ANALYSIS.md`, a fresh source-line-cited
-  audit already on disk, cross-checked against the tool array in `dist/index.js`).
-- Custom: 26 tools inspected (read directly from live current `FIGMA-CUSTOM-MCP/src/tools.ts` in this
-  session, not memory).
-- Full breakdown: `docs/BLOCK_A_CAPABILITY_MATRIX.md`.
+See `docs/BLOCK_A_CAPABILITY_MATRIX.md` for the full per-capability table (23 Plumb tools, 26 Custom
+tools, all source-verified) and `docs/BLOCK_A_FINAL_REPORT.md` §4-7 for the exact current counts.
 
-## Integrated capability count
+## Architecture
 
-- **1 new capability enriched this batch**: `custom.node.read`/`custom.selection.read` upgraded from
-  geometry+metadata-only to full 8-category fidelity (geometry/layout/appearance/text/component/
-  variables/styles/metadata), with an `include` filter.
-- Carried over from Stage 4 / pre-Block-A hardening (unchanged this batch): `plumb.status`,
-  `plumb.outline`, `plumb.selection.read`, `custom.status` — 4 capabilities.
-- **Total live production capabilities: 6** (same 6 capability IDs as before A1 — A1 enriched two of
-  them rather than adding new IDs, since full-fidelity reads are a richer version of the same
-  `custom.node.read`/`custom.selection.read` operations, not new operations).
+See `docs/BLOCK_A_INTEGRATION_ARCHITECTURE.md` (the reuse-by-import vs. reuse-by-porting principle) and
+`docs/BLOCK_A_SOURCE_PARITY.md` (the per-function port record proving nothing was silently
+reimplemented).
 
-## Deferred capability count
+## Real Figma evidence
 
-45 capabilities across both families remain planned (A2-A11) or explicitly deferred with reasons — see
-`docs/BLOCK_A_CAPABILITY_MATRIX.md` for the exact per-capability list and rationale. Nothing was silently
-dropped; every Plumb/Custom tool inspected has an explicit status (INTEGRATED/PLANNED/DEFERRED/NOT
-NEEDED) and, where DEFERRED or NOT NEEDED, a stated reason.
+See `docs/BLOCK_A_LIVE_RESULTS.md` for the full account of every live test run this execution, including
+the real bugs found and fixed (the `custom.patch_node` props-wrapping bug) and the real, honestly-
+documented transient reliability characteristic (`docs/BLOCK_A_LIMITATIONS.md`).
 
-## Ownership summary
+## Manual switching / runtime restarts during this execution
 
-See `docs/BLOCK_A_CAPABILITY_MATRIX.md`'s "Ownership summary" table and
-`docs/BLOCK_A_INTEGRATION_ARCHITECTURE.md`'s ownership principle section — condensed from the Plumb gap
-analysis's own §39 rather than re-derived from scratch.
-
-## Read fidelity
-
-Full 8-category coverage now live for Custom-family reads (A1). Exact property lists per category match
-Custom MCP's own real serializer verbatim (see `docs/BLOCK_A_INTEGRATION_ARCHITECTURE.md`) — no
-properties were added or dropped versus the source of truth. Plumb-family reads remain their own
-pre-existing compact format, unaffected by A1, per the "do not force identical semantics" principle.
-
-## Write coverage
-
-**None yet.** Create/update/delete are entirely unintegrated at this checkpoint (A2, not started).
-
-## P2 integration
-
-**None yet** (A9, not started).
-
-## P3 integration
-
-**None yet** (A10, not started). Note: A1's full-fidelity reads are a prerequisite for meaningful P3
-diff/verify work later, since those tools need to compare against accurately-read live state.
-
-## Plumb code/extraction integration
-
-`plumb.outline`/`plumb.status`/`plumb.selection.read` live since Stage 4. `plumb.node.read`/
-`plumb.tokens`/`plumb.components` planned (A11, not started).
-
-## Large-tree performance
-
-Not yet measured — see `docs/BLOCK_A_PERFORMANCE.md` for why this is deliberately deferred to a batch
-that actually builds a non-trivial tree (A6/A7), rather than measured against artificial filler content.
-
-## Mini-design acceptance
-
-Not yet attempted — requires the write path (A2+) to exist first.
-
-## Cross-family result
-
-Not yet meaningfully testable beyond what A1 already proved: a single persistent session correctly
-served both `plumb.selection.read` (compact format, unaffected) and `custom.node.read`/
-`custom.selection.read` (new full-fidelity format) back-to-back through the same paired plugin, with zero
-manual switching — see `docs/BLOCK_A_TEST_PLAN.md`, A1 section, final two verification steps.
-
-## Manual switching
-
-**0** across all A1 testing — one plugin reload was needed after each code change (twice total, expected
-and normal development iteration, not "manual switching" in the dual-plugin sense Block A's
-requirements target).
-
-## Runtime restarts
-
-**0** — the same persistent Unified MCP process and bridge served every A1 test call.
+**0 manual plugin switches** (Unified ↔ original Plumb/Custom plugins) across the entire execution.
+2 plugin reloads were needed (both to load genuinely new `figma-plugin/code.js`/`ui.html` code, not to
+switch plugins) — after A1 and after the combined A2+A6-A9 mutation-handler port. The mini-design
+acceptance batch required zero reload.
 
 ## Existing-system modifications
 
@@ -106,28 +48,26 @@ Plumb: NONE
 Custom: NONE
 Custom P0-P3: NONE
 ```
-Confirmed by `git status` in `FIGMA-CUSTOM-MCP` and the Plumb installation directory being untouched —
-every A1 change is inside `FIGMA UNIFIED MCP` only.
+Confirmed via `git status` (clean) in `FIGMA-CUSTOM-MCP` and zero writes to the Plumb installation
+directory — every change this execution made is inside `FIGMA UNIFIED MCP` only.
 
 ## Regression
 
-Not re-run this checkpoint (no reason to expect a change — A1 touched only Custom-family read
-serialization inside Unified's own plugin; the pre-Block-A hardening pass's regression evidence for
-original Plumb/Custom still stands). Will be re-run before any future checkpoint that claims a final
-Block A verdict.
+82/82 unit tests passing (up from 49/49 at the start of this execution), `npm run check` clean, original
+Plumb and Custom MCP both confirmed still spawning and responding correctly at the process/bridge level.
 
-## Remaining gaps (become input to the next A1→A11 batches, not Block B)
+## Remaining gaps (real input for continuing this same Block, not Block B)
 
-- A2 (basic create/update/delete write path) — next up, and the brief's own recommended immediate next
-  batch.
-- A3-A11 — text, appearance, geometry writes, layout, hierarchy/components, images/assets, P2 advanced
-  operations, P3 diff/verify/measure, high-value Plumb extraction tools (`plumb.node.read`,
-  `plumb.tokens`, `plumb.components`).
-- A large-tree performance measurement once enough real structure exists to make it meaningful.
-- A decision on `figma_batch` (Custom's own multi-op orchestration tool) vs. relying on Unified's
-  existing `CommandQueue` sequencing — flagged in the capability matrix, not resolved yet.
+- A large-tree performance measurement against a genuinely non-trivial composition.
+- Independent live tests for `custom.boolean`, `custom.create_component_set`, `custom.instance_swap`,
+  `custom.styles` (text/effect/grid kinds), `custom.component_property` — all schema+plugin wired, none
+  independently exercised against real Figma yet.
+- A11: `plumb.node.read`, `plumb.tokens`, `plumb.components`, and the rest of the deferred Plumb
+  capability list in `docs/BLOCK_A_CAPABILITY_MATRIX.md`.
+- A decision on `figma_batch` vs. relying on Unified's own `CommandQueue` sequencing.
+- Root-causing the transient response-delivery timeout documented in `docs/BLOCK_A_LIMITATIONS.md`
+  (would need Figma-side diagnostic access this environment doesn't have).
 
 ---
 
 ## UNIFIED CAPABILITY INTEGRATION: PARTIAL
-(Checkpoint after batch A1 of an estimated 11. Not a stopping point — continues with A2 next.)

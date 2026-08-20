@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "ws": "^8.18.0",
-    "zod": "^3.23.8"
+    "zod": "^3.23.8",
+    "figma-custom-mcp": "file:../FIGMA-CUSTOM-MCP"
   }
 }
