@@ -15,6 +15,18 @@ import { SimpleMcpServer } from "./mcp/server.js";
 import { errorShape } from "./errors.js";
 import { textResult } from "./utils.js";
 
+/**
+ * H1 (pre-Block-A hardening) — the legacy Stage-2 diagnostic path (`unified_status`/
+ * `unified_backends`/`unified_active_backend`/`unified_probe_backend`) spawns the ORIGINAL, separate
+ * Plumb and Custom MCP server processes and requires their ORIGINAL, separate Figma plugins to be
+ * paired — structurally the exact two-plugin-runtime problem Stage 3/3.5/4 replaced with the single
+ * Unified plugin runtime. Gated behind an explicit opt-in flag so a normal production LLM session has
+ * no path back into it by accident. See docs/LEGACY_RUNTIME_POLICY.md.
+ */
+export function legacyDiagnosticsEnabled(env = process.env) {
+  return env.UNIFIED_ENABLE_LEGACY_DIAGNOSTICS === "true";
+}
+
 export function createCoordinator(env = process.env) {
   const config = loadConfig(env);
   const logger = new CoordinatorLogger({ level: config.logLevel });
@@ -33,7 +45,7 @@ export function createCoordinator(env = process.env) {
   );
   const runtimeBridge = new UnifiedRuntimeBridge({ ...config.runtime, logger });
   const capabilityRegistry = new CapabilityRegistry();
-  const commandQueue = new CommandQueue({ logger });
+  const commandQueue = new CommandQueue({ logger, maxQueueLength: config.runtime.maxQueueLength, queueWaitTimeoutMs: config.runtime.queueWaitTimeoutMs });
   const commandRouter = new CommandRouter({
     registry: capabilityRegistry,
     queue: commandQueue,
@@ -51,6 +63,10 @@ export function createCoordinator(env = process.env) {
     queue: commandQueue,
     logger
   });
+  // Registering BackendRegistry/adapters here is harmless by itself — construction never spawns a
+  // process (PlumbAdapter/CustomAdapter spawn lazily, only inside getStatus()/getClient()). What
+  // matters for H1 is that createTools() below never registers an MCP tool that can reach them
+  // unless the caller explicitly opted in.
   const coordinator = new UnifiedCoordinator({ registry, logger });
   coordinator.runtime = runtime;
   const cleanup = () => Promise.all([registry.close(), runtimeBridge.close()]).catch(() => {});
@@ -70,46 +86,18 @@ function safeRuntime(handler) {
   };
 }
 
-export function createTools(coordinator) {
-  return {
-    unified_status: {
-      name: "unified_status",
-      description: "Return current normalized health for Plumb and Custom backends plus active backend detection.",
-      inputSchema: { type: "object", properties: {}, additionalProperties: false },
-      handler: async () => textResult(await coordinator.status())
-    },
-    unified_backends: {
-      name: "unified_backends",
-      description: "Return known Unified MCP backends and their capability summaries.",
-      inputSchema: { type: "object", properties: {}, additionalProperties: false },
-      handler: async () => textResult(await coordinator.backends())
-    },
-    unified_active_backend: {
-      name: "unified_active_backend",
-      description: "Return only the currently detected active Figma backend.",
-      inputSchema: { type: "object", properties: {}, additionalProperties: false },
-      handler: async () => textResult(await coordinator.activeBackend())
-    },
-    unified_probe_backend: {
-      name: "unified_probe_backend",
-      description: "Run a safe read-only diagnostic through one backend: plumb or custom.",
-      inputSchema: {
-        type: "object",
-        properties: { backend: { type: "string", enum: ["plumb", "custom"] } },
-        required: ["backend"],
-        additionalProperties: false
-      },
-      handler: async (args) => textResult(await coordinator.probeBackend(args))
-    },
+export function createTools(coordinator, env = process.env) {
+  const tools = {
+    // -------------------------------------------------- production Stage 4 surface --
     unified_capabilities: {
       name: "unified_capabilities",
-      description: "Return the Stage 4 production runtime capabilities currently supported by Unified MCP.",
+      description: "Return the production runtime capabilities currently supported by Unified MCP (the single-Figma-plugin execution path — see unified_execute).",
       inputSchema: { type: "object", properties: {}, additionalProperties: false },
       handler: safeRuntime(() => coordinator.runtime.capabilities())
     },
     unified_execute: {
       name: "unified_execute",
-      description: "Execute one explicit Stage 4 capability through the production Unified runtime path.",
+      description: "Execute one explicit production capability (see unified_capabilities for the list) through the single Unified Figma plugin runtime. This is the primary, and normally only, way to act on Figma through Unified MCP.",
       inputSchema: {
         type: "object",
         properties: {
@@ -128,34 +116,80 @@ export function createTools(coordinator) {
         }
       }
     },
+    // H15 — the production-safe status/health capability. Reports only the single Unified runtime
+    // (bridge/plugin/protocol/queue) — never spawns or requires the original Plumb/Custom processes.
     unified_runtime_status: {
       name: "unified_runtime_status",
-      description: "Return Stage 3.5 single Unified Figma plugin runtime bridge status.",
+      description: "PRODUCTION STATUS. Report the single Unified Figma plugin runtime's health: bridge state, plugin connection/version, protocol version, and command queue status. Never spawns or requires the original Plumb/Custom MCP processes or their separate plugins.",
       inputSchema: { type: "object", properties: {}, additionalProperties: false },
       handler: safeRuntime(() => coordinator.runtime.status())
     },
+    // -------------------------------------------------- deprecated Stage 3.5 POC surface --
+    // H5 — these three duplicate unified_execute called with a hardcoded capability id
+    // ("plumb.outline" / "custom.node.read" / that pair run twice). Kept only because
+    // tests/runtime.test.js already exercises the underlying service methods; not the recommended
+    // path for new callers.
     unified_runtime_plumb_read: {
       name: "unified_runtime_plumb_read",
-      description: "Run the Stage 3.5 Plumb-family outline read through the single Unified Figma plugin.",
+      description: "DEPRECATED — POC/diagnostic only, not for production workflows. Equivalent to unified_execute({capability:\"plumb.outline\"}); prefer calling unified_execute directly.",
       inputSchema: { type: "object", properties: {}, additionalProperties: false },
       handler: safeRuntime(() => coordinator.runtime.plumbRead())
     },
     unified_runtime_custom_read: {
       name: "unified_runtime_custom_read",
-      description: "Run the Stage 3.5 Custom-family node read through the single Unified Figma plugin.",
+      description: "DEPRECATED — POC/diagnostic only, not for production workflows. Equivalent to unified_execute({capability:\"custom.node.read\"}); prefer calling unified_execute directly.",
       inputSchema: { type: "object", properties: {}, additionalProperties: false },
       handler: safeRuntime(() => coordinator.runtime.customRead())
     },
     unified_runtime_acceptance_sequence: {
       name: "unified_runtime_acceptance_sequence",
-      description: "Run Plumb-family read, Custom-family read, then Plumb-family read again through one Unified Figma plugin runtime.",
+      description: "DEPRECATED — POC/diagnostic only, not for production workflows. Runs a fixed plumb→custom→plumb unified_execute sequence to demonstrate single-plugin cross-family execution; prefer sequencing unified_execute calls directly.",
       inputSchema: { type: "object", properties: {}, additionalProperties: false },
       handler: safeRuntime(() => coordinator.runtime.acceptanceSequence())
     }
   };
+
+  // H1 — legacy Stage-2 dual-runtime diagnostics: NOT registered at all unless explicitly opted in.
+  // A normal production LLM session sees none of these four tools and therefore has no path back
+  // into the original two-plugin runtime problem.
+  if (legacyDiagnosticsEnabled(env)) {
+    Object.assign(tools, {
+      unified_status: {
+        name: "unified_status",
+        description: "LEGACY DIAGNOSTICS ONLY — NOT FOR PRODUCTION DESIGN EXECUTION. Spawns the ORIGINAL, separate Plumb and Custom MCP processes and requires their ORIGINAL, separate Figma plugins (not the Unified plugin). Only available because UNIFIED_ENABLE_LEGACY_DIAGNOSTICS=true was set. See docs/LEGACY_RUNTIME_POLICY.md.",
+        inputSchema: { type: "object", properties: {}, additionalProperties: false },
+        handler: async () => textResult(await coordinator.status())
+      },
+      unified_backends: {
+        name: "unified_backends",
+        description: "LEGACY DIAGNOSTICS ONLY — NOT FOR PRODUCTION DESIGN EXECUTION. Same original-process/original-plugin caveat as unified_status. See docs/LEGACY_RUNTIME_POLICY.md.",
+        inputSchema: { type: "object", properties: {}, additionalProperties: false },
+        handler: async () => textResult(await coordinator.backends())
+      },
+      unified_active_backend: {
+        name: "unified_active_backend",
+        description: "LEGACY DIAGNOSTICS ONLY — NOT FOR PRODUCTION DESIGN EXECUTION. Same original-process/original-plugin caveat as unified_status. See docs/LEGACY_RUNTIME_POLICY.md.",
+        inputSchema: { type: "object", properties: {}, additionalProperties: false },
+        handler: async () => textResult(await coordinator.activeBackend())
+      },
+      unified_probe_backend: {
+        name: "unified_probe_backend",
+        description: "LEGACY DIAGNOSTICS ONLY — NOT FOR PRODUCTION DESIGN EXECUTION. Spawns the ORIGINAL, separate Plumb/Custom MCP process for the requested backend and requires its ORIGINAL, separate Figma plugin. See docs/LEGACY_RUNTIME_POLICY.md.",
+        inputSchema: {
+          type: "object",
+          properties: { backend: { type: "string", enum: ["plumb", "custom"] } },
+          required: ["backend"],
+          additionalProperties: false
+        },
+        handler: async (args) => textResult(await coordinator.probeBackend(args))
+      }
+    });
+  }
+
+  return tools;
 }
 
 export function createServer(env = process.env) {
   const coordinator = createCoordinator(env);
-  return new SimpleMcpServer({ name: "figma-unified-mcp", version: "0.1.0", tools: createTools(coordinator) });
+  return new SimpleMcpServer({ name: "figma-unified-mcp", version: "0.1.0", tools: createTools(coordinator, env) });
 }

@@ -16,7 +16,13 @@ export const ERROR_CODES = Object.freeze({
   COMMAND_TIMEOUT: "COMMAND_TIMEOUT",
   COMMAND_EXECUTION_FAILED: "COMMAND_EXECUTION_FAILED",
   FIGMA_API_ERROR: "FIGMA_API_ERROR",
-  INTERNAL_ERROR: "INTERNAL_ERROR"
+  INTERNAL_ERROR: "INTERNAL_ERROR",
+  // H7 (pre-Block-A hardening) — distinct from COMMAND_TIMEOUT: that code means "the capability
+  // itself ran too long," these two mean "the command never even started running." Conflating queue
+  // wait with execution timeout would hide a busy-runtime problem behind what looks like a slow-
+  // capability problem.
+  QUEUE_FULL: "QUEUE_FULL",
+  QUEUE_WAIT_TIMEOUT: "QUEUE_WAIT_TIMEOUT"
 });
 
 export class UnifiedError extends Error {
@@ -28,27 +34,49 @@ export class UnifiedError extends Error {
   }
 }
 
+/**
+ * H11 (pre-Block-A hardening) — the normalized shape now always includes `source` (which family/
+ * origin the error came from, e.g. "plumb"/"custom"/"unified") whenever the caller supplied one via
+ * `details.source`, promoted to a top-level field rather than buried inside `details`. The specific
+ * original `message` is never discarded in favor of just the `code` — both are always present.
+ */
 export function errorShape(error) {
   if (error instanceof UnifiedError) {
-    return { code: error.code, message: error.message, details: error.details };
+    const { source, ...restDetails } = error.details && typeof error.details === "object" ? error.details : {};
+    const details = Object.keys(restDetails).length ? restDetails : error.details;
+    return { code: error.code, message: error.message, source: source ?? null, details: details ?? null };
   }
   return {
     code: ERROR_CODES.INTERNAL_ERROR,
-    message: error instanceof Error ? error.message : String(error)
+    message: error instanceof Error ? error.message : String(error),
+    source: null,
+    details: null
   };
 }
 
+/**
+ * H6 (pre-Block-A hardening) — legacy-diagnostics-only fallback classification (used by the gated
+ * Stage-2 adapters, see docs/LEGACY_RUNTIME_POLICY.md). Structured errors are always preferred first:
+ * an already-`UnifiedError` (or any error carrying its own `.code`) is returned as-is, never
+ * reclassified by message text. Substring matching only ever applies to genuinely unstructured
+ * errors (e.g. a raw Node.js `ECONNREFUSED`/`Error` with no `.code` at all) — it is not, and was
+ * never, the classification path for the production Stage 4 execution route (CommandRouter's own
+ * errors are UnifiedError instances or plugin-supplied `{code, message}` shapes from the start).
+ */
 export function normalizeBackendError(error) {
+  if (error instanceof UnifiedError) return error;
+  if (error && typeof error === "object" && typeof error.code === "string") {
+    return new UnifiedError(error.code, error.message ?? String(error), error.details);
+  }
   const message = error instanceof Error ? error.message : String(error);
   const lower = message.toLowerCase();
-  if (error instanceof UnifiedError) return error;
   if (lower.includes("timed out") || lower.includes("timeout")) {
     return new UnifiedError(ERROR_CODES.BACKEND_TIMEOUT, message);
   }
   if (lower.includes("eaddrinuse") || lower.includes("address already in use")) {
     return new UnifiedError(ERROR_CODES.BACKEND_UNAVAILABLE, message);
   }
-  if (lower.includes("no figma plugin is paired") || lower.includes("not paired") || lower.includes("plugin paired") === false && lower.includes("open the") && lower.includes("plugin")) {
+  if (lower.includes("no figma plugin is paired") || lower.includes("not paired") || (lower.includes("plugin paired") === false && lower.includes("open the") && lower.includes("plugin"))) {
     return new UnifiedError(ERROR_CODES.BACKEND_NOT_PAIRED, message);
   }
   if (lower.includes("figma") && lower.includes("unavailable")) {

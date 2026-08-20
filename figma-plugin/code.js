@@ -7,28 +7,61 @@ function pluginError(code, message, details) {
   return { code, message, ...(details ? { details } : {}) };
 }
 
-function serializeNode(node, depth) {
-  const out = {
-    id: node.id,
-    name: node.name,
-    type: node.type
-  };
-  if ("x" in node) out.x = node.x;
-  if ("y" in node) out.y = node.y;
-  if ("width" in node) out.width = node.width;
-  if ("height" in node) out.height = node.height;
-  if ("visible" in node) out.visible = node.visible;
+// H3 (pre-Block-A hardening) — an extension point, not a full-fidelity read yet. Structured as named
+// field groups (deliberately mirroring Custom MCP's own proven `include`-category read pattern) so a
+// future higher-fidelity read can be built by adding new group functions below and populating them
+// with real Figma data, rather than by writing a second parallel serializer from scratch — the exact
+// mistake the read-only Unified MCP audit flagged in the (since-shelved) `custom.design.apply` WIP.
+// Only "geometry" and "metadata" are populated today, matching Stage 4's actual shipped read-only
+// scope. The remaining groups are real, planned Block-A work — listed explicitly here rather than
+// silently implied complete. See docs/PRE_BLOCK_A_HARDENING.md (issue H3) for the full rationale.
+const SERIALIZER_FIELD_GROUPS = {
+  geometry(node, out) {
+    if ("x" in node) out.x = node.x;
+    if ("y" in node) out.y = node.y;
+    if ("width" in node) out.width = node.width;
+    if ("height" in node) out.height = node.height;
+  },
+  metadata(node, out) {
+    if ("visible" in node) out.visible = node.visible;
+  }
+  // Block A extension points (not yet populated — see docs/PRE_BLOCK_A_HARDENING.md, issue H3):
+  //   appearance(node, out) { ...fills/strokes/effects/opacity/blendMode/cornerRadius... }
+  //   text(node, out)       { ...characters/font... }
+  //   layout(node, out)     { ...layoutMode/padding/gap/constraints... }
+  //   component(node, out)  { ...component/instance/variant state... }
+  //   variables(node, out)  { ...boundVariables... }
+  //   styles(node, out)     { ...fill/stroke/text/effect/grid style ids... }
+};
+
+/**
+ * @param {*} node
+ * @param {number} depth
+ * @param {string[]} [include] Optional category filter (same shape as Custom MCP's figma_node
+ *   `include` param) — omit for every currently-populated group, matching prior unfiltered behavior.
+ */
+function serializeNode(node, depth, include) {
+  const want = (category) => !include || include.includes(category);
+  const out = { id: node.id, name: node.name, type: node.type };
+  for (const [category, apply] of Object.entries(SERIALIZER_FIELD_GROUPS)) {
+    if (want(category)) apply(node, out);
+  }
   if ("children" in node) {
     out.childCount = node.children.length;
-    if (depth > 0) out.children = node.children.map((child) => serializeNode(child, depth - 1));
+    if (depth > 0) out.children = node.children.map((child) => serializeNode(child, depth - 1, include));
   }
   return out;
 }
 
+// H4 (pre-Block-A hardening) — raised from 6 to 20 to match Custom MCP's real figma_node limit (see
+// src/runtime/limits.js, the server-side source of truth this value is pinned to; the plugin sandbox
+// has no module system to import it directly from).
+const MAX_READ_DEPTH = 20;
+
 function normalizeDepth(payload, fallback = 1) {
   const depth = Number(payload && payload.depth !== undefined ? payload.depth : fallback);
-  if (!Number.isInteger(depth) || depth < 0 || depth > 6) {
-    throw new Error("Depth must be an integer from 0 to 6.");
+  if (!Number.isInteger(depth) || depth < 0 || depth > MAX_READ_DEPTH) {
+    throw new Error(`Depth must be an integer from 0 to ${MAX_READ_DEPTH}.`);
   }
   return depth;
 }

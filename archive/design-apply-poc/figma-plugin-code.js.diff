@@ -1,0 +1,178 @@
+diff --git a/figma-plugin/code.js b/figma-plugin/code.js
+index 0bedc04..abf3708 100644
+--- a/figma-plugin/code.js
++++ b/figma-plugin/code.js
+@@ -1,7 +1,7 @@
+ figma.showUI(__html__, { width: 300, height: 190, title: "Unified Runtime" });
+ 
+ const PROTOCOL_VERSION = "1.0";
+-const PLUGIN_VERSION = "0.2.0-stage4";
++const PLUGIN_VERSION = "0.3.0-unified-design";
+ 
+ function pluginError(code, message, details) {
+   return { code, message, ...(details ? { details } : {}) };
+@@ -37,6 +37,154 @@ function topLevelScreen(node) {
+   return ["FRAME", "COMPONENT", "INSTANCE", "SECTION"].includes(node.type);
+ }
+ 
++function solidPaint(fill) {
++  return {
++    type: "SOLID",
++    color: hexToRgb(fill.color),
++    opacity: fill.opacity === undefined ? 1 : fill.opacity
++  };
++}
++
++function hexToRgb(hex) {
++  const clean = hex.replace("#", "");
++  const full = clean.length === 3 ? clean.split("").map((ch) => ch + ch).join("") : clean.slice(0, 6);
++  return {
++    r: parseInt(full.slice(0, 2), 16) / 255,
++    g: parseInt(full.slice(2, 4), 16) / 255,
++    b: parseInt(full.slice(4, 6), 16) / 255
++  };
++}
++
++function effectToFigma(effect) {
++  const color = hexToRgb(effect.color || "#000000");
++  const typeMap = {
++    "drop-shadow": "DROP_SHADOW",
++    "inner-shadow": "INNER_SHADOW",
++    "layer-blur": "LAYER_BLUR",
++    "background-blur": "BACKGROUND_BLUR"
++  };
++  if (effect.type === "layer-blur" || effect.type === "background-blur") {
++    return { type: typeMap[effect.type], radius: effect.blur || 0, visible: true };
++  }
++  return {
++    type: typeMap[effect.type] || "DROP_SHADOW",
++    color: { ...color, a: effect.opacity === undefined ? 1 : effect.opacity },
++    offset: { x: effect.x || 0, y: effect.y || 0 },
++    radius: effect.blur || 0,
++    spread: effect.spread || 0,
++    visible: true,
++    blendMode: "NORMAL"
++  };
++}
++
++function bytesFromDataUri(uri) {
++  const comma = uri.indexOf(",");
++  if (!uri.startsWith("data:") || comma < 0) throw new Error("Image src must be a data URI.");
++  const base64 = uri.slice(comma + 1);
++  if (figma.base64Decode) return figma.base64Decode(base64);
++  const binary = atob(base64);
++  const bytes = new Uint8Array(binary.length);
++  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
++  return bytes;
++}
++
++async function loadTextFont(font = {}) {
++  const family = font.family || "Inter";
++  const weight = Number(font.weight || 400);
++  const preferred = weight >= 900 ? "Black" : weight >= 800 ? "Extra Bold" : weight >= 700 ? "Bold" : weight >= 600 ? "Semi Bold" : weight >= 500 ? "Medium" : "Regular";
++  try {
++    const fontName = { family, style: preferred };
++    await figma.loadFontAsync(fontName);
++    return fontName;
++  } catch {
++    const fallback = { family: "Inter", style: weight >= 700 ? "Bold" : "Regular" };
++    await figma.loadFontAsync(fallback);
++    return fallback;
++  }
++}
++
++function applyCommon(node, spec) {
++  if (spec.name) node.name = spec.name;
++  if (typeof spec.x === "number") node.x = spec.x;
++  if (typeof spec.y === "number") node.y = spec.y;
++  if (typeof spec.width === "number" && typeof spec.height === "number" && "resize" in node) node.resize(spec.width, spec.height);
++  if (typeof spec.opacity === "number") node.opacity = spec.opacity;
++  if (typeof spec.rotation === "number") node.rotation = spec.rotation;
++  if (typeof spec.cornerRadius === "number" && "cornerRadius" in node) node.cornerRadius = spec.cornerRadius;
++  if (typeof spec.radius === "number" && "cornerRadius" in node) node.cornerRadius = spec.radius;
++  if (typeof spec.clip === "boolean" && "clipsContent" in node) node.clipsContent = spec.clip;
++  if (spec.fill && "fills" in node) node.fills = spec.fill.opacity === 0 ? [] : [solidPaint(spec.fill)];
++  if (spec.stroke && "strokes" in node) {
++    node.strokes = [{ type: "SOLID", color: hexToRgb(spec.stroke.color), opacity: spec.stroke.opacity === undefined ? 1 : spec.stroke.opacity }];
++    node.strokeWeight = spec.stroke.width || 1;
++    if (spec.stroke.align) node.strokeAlign = spec.stroke.align.toUpperCase();
++  }
++  if (Array.isArray(spec.effects) && "effects" in node) node.effects = spec.effects.map(effectToFigma);
++}
++
++async function createDesignNode(spec, parent, ids) {
++  let node;
++  if (spec.type === "frame") node = figma.createFrame();
++  else if (spec.type === "rect" || spec.type === "image") node = figma.createRectangle();
++  else if (spec.type === "ellipse") node = figma.createEllipse();
++  else if (spec.type === "text") node = figma.createText();
++  else throw new Error(`Unsupported design node type: ${spec.type}`);
++
++  parent.appendChild(node);
++  applyCommon(node, spec);
++  if (spec.type === "image") {
++    const image = figma.createImage(bytesFromDataUri(spec.src));
++    node.fills = [{ type: "IMAGE", imageHash: image.hash, scaleMode: spec.scaleMode || "FILL" }];
++  }
++  if (spec.type === "text") {
++    const fontName = await loadTextFont(spec.font);
++    node.fontName = fontName;
++    node.characters = spec.text || "";
++    if (spec.font?.size) node.fontSize = spec.font.size;
++    if (spec.font?.color) node.fills = [solidPaint({ color: spec.font.color })];
++    if (spec.font?.lineHeight) node.lineHeight = { unit: "PIXELS", value: spec.font.lineHeight };
++    if (typeof spec.font?.letterSpacing === "number") node.letterSpacing = { unit: "PIXELS", value: spec.font.letterSpacing };
++    if (spec.font?.align) node.textAlignHorizontal = spec.font.align.toUpperCase();
++    if (typeof spec.width === "number" && typeof spec.height === "number") node.resize(spec.width, spec.height);
++  }
++
++  ids[spec.id] = node.id;
++  if (Array.isArray(spec.children)) {
++    for (const child of spec.children) await createDesignNode(child, node, ids);
++  }
++  return node;
++}
++
++async function customDesignApply(payload) {
++  const doc = payload.doc;
++  if (!doc || doc.version !== "unified-design-v1" || !doc.root) {
++    throw pluginError("INVALID_PAYLOAD", "Design doc must use version unified-design-v1 and include root.");
++  }
++  if (payload.dryRun) return { dryRun: true, name: doc.name || doc.root.name, nodeCount: countDesignNodes(doc.root) };
++  await figma.loadAllPagesAsync();
++  let page = figma.currentPage;
++  if (doc.page) {
++    page = figma.root.children.find((candidate) => candidate.name === doc.page) || figma.createPage();
++    page.name = doc.page;
++    await figma.setCurrentPageAsync(page);
++  }
++  const rootName = doc.root.name || doc.name || "Unified Design";
++  for (const child of [...page.children]) {
++    if (child.name === rootName) child.remove();
++  }
++  const ids = {};
++  const root = await createDesignNode({ ...doc.root, name: rootName }, page, ids);
++  if (payload.reveal !== false) {
++    figma.currentPage.selection = [root];
++    figma.viewport.scrollAndZoomIntoView([root]);
++  }
++  return { rootId: root.id, ids, nodeCount: Object.keys(ids).length, page: page.name };
++}
++
++function countDesignNodes(node) {
++  return 1 + (Array.isArray(node.children) ? node.children.reduce((sum, child) => sum + countDesignNodes(child), 0) : 0);
++}
++
+ async function runtimeStatus(family) {
+   await figma.loadAllPagesAsync();
+   return {
+@@ -118,7 +266,8 @@ const handlers = {
+   custom: {
+     status: async () => await runtimeStatus("custom"),
+     "node.read": async (payload) => await customNode(payload),
+-    "selection.read": async (payload) => await customSelection(payload)
++    "selection.read": async (payload) => await customSelection(payload),
++    "design.apply": async (payload) => await customDesignApply(payload)
+   }
+ };
+ 

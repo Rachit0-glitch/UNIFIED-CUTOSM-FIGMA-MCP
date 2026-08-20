@@ -1,6 +1,11 @@
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const documentsRoot = "C:\\Users\\rachi\\OneDrive\\Documents";
+// H8 (pre-Block-A hardening): Unified owns its own `ws` dependency now (see package.json) — this
+// resolves to Unified's OWN node_modules/ws, never Custom MCP's. `UNIFIED_WS_MODULE` remains
+// available as an explicit override, but the default no longer reaches into another repository.
+const unifiedRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
 function splitArgs(value) {
   if (!value) return null;
@@ -26,8 +31,10 @@ export function loadConfig(env = process.env) {
     },
     runtime: {
       port: Number(env.UNIFIED_RUNTIME_PORT || 39417),
-      wsModulePath: env.UNIFIED_WS_MODULE || path.join(customRepo, "node_modules", "ws", "wrapper.mjs"),
-      requestTimeoutMs: Number(env.UNIFIED_RUNTIME_TIMEOUT_MS || 8000)
+      wsModulePath: env.UNIFIED_WS_MODULE || path.join(unifiedRoot, "node_modules", "ws", "wrapper.mjs"),
+      requestTimeoutMs: Number(env.UNIFIED_RUNTIME_TIMEOUT_MS || 8000),
+      maxQueueLength: Number(env.UNIFIED_MAX_QUEUE_LENGTH || 50),
+      queueWaitTimeoutMs: Number(env.UNIFIED_QUEUE_WAIT_TIMEOUT_MS || 15000)
     }
   };
 }

@@ -47,6 +47,25 @@ Stage 4 docs:
 - `docs/STAGE4_TEST_PLAN.md`
 - `docs/STAGE4_RESULTS.md`
 
+## Pre-Block-A Hardening Status
+
+**UNIFIED MCP STATUS: READY FOR BLOCK A.** Before Block A capability integration begins, this pass
+resolved 15 architectural/reliability issues (H1-H15) found by a read-only audit of the Stage 4
+foundation: the old dual-plugin-runtime path is now gated behind an opt-in diagnostics flag and
+excluded from the default MCP tool set, the shallow `custom.design.apply` proof of concept was shelved
+(archived, not deleted), capability payloads are now validated by Zod schemas before any bridge call,
+the command queue is bounded with distinct `QUEUE_FULL`/`QUEUE_WAIT_TIMEOUT` errors, Unified now owns
+its own `ws`/`zod` dependencies instead of reaching into `FIGMA-CUSTOM-MCP`, and structured errors
+preserve their originating `source` and specific message end-to-end. All of it was verified live against
+the real Unified Runtime Figma plugin, not just unit tests. Full results: `docs/HARDENING_RESULTS.md`.
+Per-issue detail: `docs/PRE_BLOCK_A_HARDENING.md`. Test methods/evidence: `docs/HARDENING_TEST_PLAN.md`.
+
+The production tool set is unchanged in shape (`unified_capabilities`, `unified_execute`,
+`unified_runtime_status`), but 4 legacy diagnostic tools (`unified_status`, `unified_backends`,
+`unified_active_backend`, `unified_probe_backend` — the old dual-runtime path) now require
+`UNIFIED_ENABLE_LEGACY_DIAGNOSTICS=true` on the server process's own environment to register at all.
+See `docs/LEGACY_RUNTIME_POLICY.md`.
+
 ## Stage 1 Status
 
 Stage 1 is documentation and verification only. The repo currently contains architecture docs, test results, and a Custom MCP SDK probe. No production coordinator implementation has been added yet.
@@ -90,7 +109,9 @@ Stage 2 adds the first real Unified MCP coordinator runtime:
 npm run start
 ```
 
-Diagnostic helpers:
+Diagnostic helpers (legacy, opt-in-gated — see Pre-Block-A Hardening Status above;
+`unified-probe.mjs` auto-passes `UNIFIED_ENABLE_LEGACY_DIAGNOSTICS=true` when the tool name is one of
+these 4):
 
 ```powershell
 node scripts\unified-probe.mjs unified_status
