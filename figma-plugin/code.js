@@ -1,56 +1,160 @@
 figma.showUI(__html__, { width: 300, height: 190, title: "Unified Runtime" });
 
 const PROTOCOL_VERSION = "1.0";
-const PLUGIN_VERSION = "0.2.0-stage4";
+const PLUGIN_VERSION = "0.3.0-blockA-a1-reads";
 
 function pluginError(code, message, details) {
   return { code, message, ...(details ? { details } : {}) };
 }
 
-// H3 (pre-Block-A hardening) — an extension point, not a full-fidelity read yet. Structured as named
-// field groups (deliberately mirroring Custom MCP's own proven `include`-category read pattern) so a
-// future higher-fidelity read can be built by adding new group functions below and populating them
-// with real Figma data, rather than by writing a second parallel serializer from scratch — the exact
-// mistake the read-only Unified MCP audit flagged in the (since-shelved) `custom.design.apply` WIP.
-// Only "geometry" and "metadata" are populated today, matching Stage 4's actual shipped read-only
-// scope. The remaining groups are real, planned Block-A work — listed explicitly here rather than
-// silently implied complete. See docs/PRE_BLOCK_A_HARDENING.md (issue H3) for the full rationale.
-const SERIALIZER_FIELD_GROUPS = {
-  geometry(node, out) {
-    if ("x" in node) out.x = node.x;
-    if ("y" in node) out.y = node.y;
-    if ("width" in node) out.width = node.width;
-    if ("height" in node) out.height = node.height;
-  },
-  metadata(node, out) {
-    if ("visible" in node) out.visible = node.visible;
-  }
-  // Block A extension points (not yet populated — see docs/PRE_BLOCK_A_HARDENING.md, issue H3):
-  //   appearance(node, out) { ...fills/strokes/effects/opacity/blendMode/cornerRadius... }
-  //   text(node, out)       { ...characters/font... }
-  //   layout(node, out)     { ...layoutMode/padding/gap/constraints... }
-  //   component(node, out)  { ...component/instance/variant state... }
-  //   variables(node, out)  { ...boundVariables... }
-  //   styles(node, out)     { ...fill/stroke/text/effect/grid style ids... }
-};
+// Block A / A1 (full-fidelity reads) — resolves H3 from the pre-Block-A hardening pass. This is a
+// LITERAL PORT of Custom MCP's own real serializeNode/serializeNodeProperties/mixedSafe
+// (FIGMA-CUSTOM-MCP/figma-plugin/code.js:31-33,721,728-886), not a reimplementation — see
+// docs/BLOCK_A_INTEGRATION_ARCHITECTURE.md for why this is the correct reuse pattern (Figma plugin
+// sandbox code has no module system, so "delegate" for plugin-sandbox logic means "port the exact same
+// function bodies," the same way the shelved custom.design.apply mistake was to write a WEAKER
+// approximation instead — this is deliberately not that). Kept in verbatim sync with the source; any
+// future upstream change to Custom's serializer should be re-ported here, not re-derived.
 
-/**
- * @param {*} node
- * @param {number} depth
- * @param {string[]} [include] Optional category filter (same shape as Custom MCP's figma_node
- *   `include` param) — omit for every currently-populated group, matching prior unfiltered behavior.
- */
-function serializeNode(node, depth, include) {
+/** A TEXT node's whole-node font/text fields can be figma.mixed (a Symbol) when they vary across
+ * characters; JSON.stringify silently drops a Symbol, so it must be substituted with a plain string
+ * sentinel before it ever reaches a bridge reply. */
+function mixedSafe(value) {
+  return value === figma.mixed ? "mixed" : value;
+}
+
+const READBACK_CATEGORIES = new Set(["geometry", "layout", "appearance", "text", "component", "variables", "styles", "metadata"]);
+
+async function serializeNode(node, depth, include) {
   const want = (category) => !include || include.includes(category);
   const out = { id: node.id, name: node.name, type: node.type };
-  for (const [category, apply] of Object.entries(SERIALIZER_FIELD_GROUPS)) {
-    if (want(category)) apply(node, out);
+
+  try {
+    await serializeNodeProperties(node, out, want);
+  } catch (e) {
+    // A single node in a broken/errored state must not crash read-back for its entire ancestor chain
+    // — report it and keep going, still recursing into children below.
+    out.readError = e.message || String(e);
   }
+
   if ("children" in node) {
-    out.childCount = node.children.length;
-    if (depth > 0) out.children = node.children.map((child) => serializeNode(child, depth - 1, include));
+    if (depth <= 0) {
+      out.childCount = node.children.length;
+    } else {
+      out.children = await Promise.all(node.children.map((c) => serializeNode(c, depth - 1, include)));
+    }
   }
   return out;
+}
+
+async function serializeNodeProperties(node, out, want) {
+  if (want("geometry")) {
+    if ("x" in node) {
+      out.x = node.x;
+      out.y = node.y;
+    }
+    if ("width" in node) {
+      out.width = node.width;
+      out.height = node.height;
+    }
+    if ("rotation" in node) out.rotation = node.rotation;
+    if (node.type === "VECTOR" && Array.isArray(node.vectorPaths) && node.vectorPaths.length) out.vectorPaths = node.vectorPaths;
+    if ("absoluteBoundingBox" in node) out.absoluteBoundingBox = node.absoluteBoundingBox;
+    if (node.parent) {
+      out.parentId = node.parent.id;
+      if ("children" in node.parent) out.index = node.parent.children.indexOf(node);
+    }
+  }
+
+  if (want("layout")) {
+    if ("layoutPositioning" in node && node.layoutPositioning === "ABSOLUTE") out.absolute = true;
+    if ("layoutMode" in node && node.layoutMode && node.layoutMode !== "NONE") {
+      out.layout = {
+        mode: node.layoutMode,
+        gap: node.itemSpacing,
+        pad: [node.paddingTop, node.paddingRight, node.paddingBottom, node.paddingLeft],
+        justify: node.primaryAxisAlignItems,
+        align: node.counterAxisAlignItems
+      };
+      if (node.layoutWrap === "WRAP") {
+        out.layout.wrap = true;
+        out.layout.wrapAlign = node.counterAxisAlignContent;
+      }
+      if (node.itemReverseZIndex === true) out.layout.reverseZIndex = true;
+    }
+    if (node.constraints && (node.constraints.horizontal || node.constraints.vertical)) {
+      out.constraints = { horizontal: node.constraints.horizontal, vertical: node.constraints.vertical };
+    }
+    if (typeof node.layoutSizingHorizontal === "string" || typeof node.layoutSizingVertical === "string") {
+      out.sizing = { horizontal: node.layoutSizingHorizontal, vertical: node.layoutSizingVertical };
+    }
+    if (Array.isArray(node.layoutGrids) && node.layoutGrids.length) out.layoutGrids = node.layoutGrids;
+  }
+
+  if (want("appearance")) {
+    if ("opacity" in node) out.opacity = node.opacity;
+    if ("blendMode" in node && node.blendMode !== "PASS_THROUGH" && node.blendMode !== "NORMAL") out.blendMode = node.blendMode;
+    if (Array.isArray(node.fills) && node.fills.length) out.fills = node.fills;
+    if (Array.isArray(node.strokes) && node.strokes.length) out.strokes = node.strokes;
+    if (typeof node.cornerRadius === "number") out.cornerRadius = node.cornerRadius;
+    if (node.clipsContent === true) out.clip = true;
+    if (node.isMask === true) out.isMask = true;
+    if (typeof node.maskType === "string" && node.maskType && node.maskType !== "ALPHA") out.maskType = node.maskType;
+    if (Array.isArray(node.effects) && node.effects.length) out.effects = node.effects;
+  }
+
+  if (want("text") && node.type === "TEXT") {
+    out.characters = node.characters;
+    const fontName = mixedSafe(node.fontName);
+    out.fontFamily = fontName === "mixed" ? "mixed" : fontName.family;
+    out.fontStyle = fontName === "mixed" ? "mixed" : fontName.style;
+    out.fontSize = mixedSafe(node.fontSize);
+    out.textAlignHorizontal = node.textAlignHorizontal;
+    out.textAlignVertical = node.textAlignVertical;
+    out.textCase = mixedSafe(node.textCase);
+    out.textDecoration = mixedSafe(node.textDecoration);
+    const lineHeight = mixedSafe(node.lineHeight);
+    out.lineHeight = lineHeight === "mixed" ? "mixed" : lineHeight;
+    const letterSpacing = mixedSafe(node.letterSpacing);
+    out.letterSpacing = letterSpacing === "mixed" ? "mixed" : letterSpacing;
+  }
+
+  if (want("styles")) {
+    if (typeof node.fillStyleId === "string" && node.fillStyleId) out.fillStyleId = node.fillStyleId;
+    if (typeof node.strokeStyleId === "string" && node.strokeStyleId) out.strokeStyleId = node.strokeStyleId;
+    if (typeof node.textStyleId === "string" && node.textStyleId) out.textStyleId = node.textStyleId;
+    if (typeof node.effectStyleId === "string" && node.effectStyleId) out.effectStyleId = node.effectStyleId;
+    if (typeof node.gridStyleId === "string" && node.gridStyleId) out.gridStyleId = node.gridStyleId;
+  }
+
+  if (want("variables")) {
+    if (node.boundVariables && Object.keys(node.boundVariables).length) out.boundVariables = node.boundVariables;
+  }
+
+  if (want("component")) {
+    if (node.type === "COMPONENT" || node.type === "COMPONENT_SET") {
+      if (node.variantProperties) out.variantProperties = node.variantProperties;
+      if (node.componentPropertyDefinitions && Object.keys(node.componentPropertyDefinitions).length) {
+        out.componentPropertyDefinitions = node.componentPropertyDefinitions;
+      }
+    }
+    if (node.type === "INSTANCE") {
+      if (node.componentProperties && Object.keys(node.componentProperties).length) out.componentProperties = node.componentProperties;
+      if (Array.isArray(node.overrides) && node.overrides.length) out.overrides = node.overrides;
+      // `mainComponent` is write-only under documentAccess:"dynamic-page" — getMainComponentAsync() is
+      // the required read path (same reason every setter in this codebase is already async).
+      const mainComponent = await node.getMainComponentAsync();
+      if (mainComponent) out.mainComponentId = mainComponent.id;
+    }
+    if (node.type === "BOOLEAN_OPERATION") out.booleanOperation = node.booleanOperation;
+  }
+
+  if (want("metadata")) {
+    if (node.locked === true) out.locked = true;
+    if (node.expanded === false) out.expanded = false;
+    if ("visible" in node) out.visible = node.visible;
+    if (Array.isArray(node.exportSettings) && node.exportSettings.length) out.exportSettings = node.exportSettings;
+  }
 }
 
 // H4 (pre-Block-A hardening) — raised from 6 to 20 to match Custom MCP's real figma_node limit (see
@@ -111,9 +215,32 @@ async function plumbOutline(payload) {
   };
 }
 
+// Plumb-family reads intentionally keep their own compact geometry+visibility summary shape — the
+// same "do not force identical semantics" principle as the rest of Block A (see
+// docs/BLOCK_A_INTEGRATION_ARCHITECTURE.md, ownership principle). The full-fidelity serializeNode
+// above is Custom-family-only; blurring it into plumb.selection.read would make Plumb reads suddenly
+// balloon in size and shape for no plumb-side benefit.
+function plumbSerializeNode(node, depth) {
+  const out = { id: node.id, name: node.name, type: node.type };
+  if ("x" in node) {
+    out.x = node.x;
+    out.y = node.y;
+  }
+  if ("width" in node) {
+    out.width = node.width;
+    out.height = node.height;
+  }
+  if ("visible" in node) out.visible = node.visible;
+  if ("children" in node) {
+    out.childCount = node.children.length;
+    if (depth > 0) out.children = node.children.map((child) => plumbSerializeNode(child, depth - 1));
+  }
+  return out;
+}
+
 async function plumbSelection(payload) {
   const depth = normalizeDepth(payload, 2);
-  const selection = figma.currentPage.selection.map((node) => serializeNode(node, depth));
+  const selection = figma.currentPage.selection.map((node) => plumbSerializeNode(node, depth));
   return {
     source: "unified-plugin",
     currentPage: figma.currentPage.name,
@@ -126,18 +253,20 @@ async function customNode(payload) {
   const depth = normalizeDepth(payload, 1);
   const node = payload && payload.nodeId ? await figma.getNodeByIdAsync(payload.nodeId) : figma.currentPage;
   if (!node) throw new Error(`Node not found: ${payload.nodeId}`);
-  return { doc: serializeNode(node, depth) };
+  const include = (payload && payload.include) || null;
+  return { doc: await serializeNode(node, depth, include) };
 }
 
 async function customSelection(payload) {
   const depth = normalizeDepth(payload, 1);
+  const include = (payload && payload.include) || null;
   return {
     doc: {
       id: figma.currentPage.id,
       name: figma.currentPage.name,
       type: "SELECTION",
       childCount: figma.currentPage.selection.length,
-      children: figma.currentPage.selection.map((node) => serializeNode(node, depth))
+      children: await Promise.all(figma.currentPage.selection.map((node) => serializeNode(node, depth, include)))
     }
   };
 }

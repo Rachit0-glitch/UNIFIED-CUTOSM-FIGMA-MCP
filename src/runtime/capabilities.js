@@ -26,16 +26,24 @@ const PlumbSelectionReadSchema = z
   })
   .strict();
 
+// Block A / A1 (full-fidelity reads) — the exact same 8 category names Custom MCP's own figma_node
+// `include` param accepts (FIGMA-CUSTOM-MCP/src/tools.ts), reused verbatim rather than invented fresh,
+// since the plugin-side serializer producing these fields is itself a literal port of Custom's real
+// serializeNode/serializeNodeProperties (figma-plugin/code.js) — see docs/BLOCK_A_INTEGRATION_ARCHITECTURE.md.
+const ReadbackCategorySchema = z.enum(["geometry", "layout", "appearance", "text", "component", "variables", "styles", "metadata"]);
+
 const CustomNodeReadSchema = z
   .object({
     nodeId: z.string().optional(),
-    depth: DepthSchema.optional().default(1)
+    depth: DepthSchema.optional().default(1),
+    include: z.array(ReadbackCategorySchema).optional()
   })
   .strict();
 
 const CustomSelectionReadSchema = z
   .object({
-    depth: DepthSchema.optional().default(1)
+    depth: DepthSchema.optional().default(1),
+    include: z.array(ReadbackCategorySchema).optional()
   })
   .strict();
 
@@ -88,7 +96,7 @@ export const STAGE4_CAPABILITIES = Object.freeze([
     id: "custom.node.read",
     family: "custom",
     operation: "node.read",
-    description: "Read one Figma node, or the current page when nodeId is omitted.",
+    description: "Read one Figma node (full fidelity: geometry, layout, appearance, text, component, variables, styles, metadata), or the current page when nodeId is omitted. Optional `include` filters to specific categories.",
     mutation: false,
     enabled: true,
     stage: "4",
@@ -99,7 +107,7 @@ export const STAGE4_CAPABILITIES = Object.freeze([
     id: "custom.selection.read",
     family: "custom",
     operation: "selection.read",
-    description: "Read the current Figma selection using Custom-family node serialization.",
+    description: "Read the current Figma selection using Custom-family full-fidelity node serialization. Optional `include` filters to specific categories.",
     mutation: false,
     enabled: true,
     stage: "4",

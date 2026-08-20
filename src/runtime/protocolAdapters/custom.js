@@ -13,9 +13,13 @@ export class CustomProtocolAdapter {
   toEnvelope({ capability, payload = {}, requestId, metadata = {} }) {
     let normalized = {};
     if (capability.operation === "node.read") {
-      normalized = { depth: payload.depth, ...(payload.nodeId ? { nodeId: payload.nodeId } : {}) };
+      normalized = {
+        depth: payload.depth,
+        ...(payload.nodeId ? { nodeId: payload.nodeId } : {}),
+        ...(payload.include ? { include: payload.include } : {})
+      };
     } else if (capability.operation === "selection.read") {
-      normalized = { depth: payload.depth };
+      normalized = { depth: payload.depth, ...(payload.include ? { include: payload.include } : {}) };
     } else if (capability.operation !== "status") {
       throw new UnifiedError(ERROR_CODES.INVALID_COMMAND, `Unsupported Custom operation: ${capability.operation}.`, { source: this.family });
     }

@@ -47,6 +47,22 @@ Stage 4 docs:
 - `docs/STAGE4_TEST_PLAN.md`
 - `docs/STAGE4_RESULTS.md`
 
+## Block A Status
+
+**In progress — checkpoint after batch A1 of an estimated 11** (`UNIFIED CAPABILITY INTEGRATION: PARTIAL`,
+see `docs/BLOCK_A_RESULTS.md`). Block A integrates the mature Plumb and Custom MCP capability surfaces
+into the one hardened Unified runtime, reusing real source-of-truth logic rather than reimplementing it
+(see `docs/BLOCK_A_INTEGRATION_ARCHITECTURE.md` for the reuse-by-import vs. reuse-by-porting distinction
+that governs every integration).
+
+A1 (full-fidelity reads) is complete and real-Figma-verified: `custom.node.read`/`custom.selection.read`
+now return the complete 8-category field set (geometry/layout/appearance/text/component/variables/
+styles/metadata) via a verbatim port of Custom MCP's own serializer, with an `include` category filter.
+Remaining batches (A2-A11: write path, typography, appearance, layout, hierarchy/components,
+images/assets, P2 advanced operations, P3 diff/verify/measure, high-value Plumb extraction tools) are
+planned but not yet started — see `docs/BLOCK_A_CAPABILITY_MATRIX.md` for the full inventory and
+per-capability status, and `docs/BLOCK_A_TEST_PLAN.md` for real-Figma test evidence per batch.
+
 ## Pre-Block-A Hardening Status
 
 **UNIFIED MCP STATUS: READY FOR BLOCK A.** Before Block A capability integration begins, this pass
