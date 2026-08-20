@@ -1,7 +1,7 @@
 figma.showUI(__html__, { width: 300, height: 190, title: "Unified Runtime" });
 
 const PROTOCOL_VERSION = "1.0";
-const PLUGIN_VERSION = "0.5.0-blockA-a6-a9-full";
+const PLUGIN_VERSION = "0.6.1-blockA-font-cache-fix";
 
 function pluginError(code, message, details) {
   return { code, message, ...(details ? { details } : {}) };
@@ -215,6 +215,50 @@ async function plumbOutline(payload) {
   };
 }
 
+// Block A / A11 — verbatim port of Plumb's own component/instance extraction
+// (plumb-mcp/figma-plugin/code.js:1914-1963, `handleGetComponents`), adapted only to return a plain
+// object instead of calling Plumb's own wire-protocol `reply()`. Genuinely new capability — no Custom
+// equivalent exists (Custom's tools operate on individual nodes/instances, never enumerate every
+// COMPONENT/COMPONENT_SET across the whole file with cross-referenced instance counts).
+async function plumbComponents() {
+  await figma.loadAllPagesAsync();
+  const components = [];
+  const instanceNodes = [];
+  function visit(n, page) {
+    if (n.visible === false) return;
+    if (n.type === "COMPONENT" || n.type === "COMPONENT_SET") {
+      const bb = n.absoluteBoundingBox;
+      const c = { id: n.id, name: n.name, page, w: bb ? Math.round(bb.width) : 0, h: bb ? Math.round(bb.height) : 0, instanceCount: 0 };
+      if (n.description) c.description = n.description;
+      components.push(c);
+    } else if (n.type === "INSTANCE") {
+      instanceNodes.push({ node: n, page });
+    }
+    if (Array.isArray(n.children) && n.type !== "INSTANCE") {
+      for (const c of n.children) visit(c, page);
+    }
+  }
+  for (const page of figma.root.children) {
+    for (const child of page.children) visit(child, page.name);
+  }
+  const BATCH = 64;
+  const resolved = [];
+  for (let i = 0; i < instanceNodes.length; i += BATCH) {
+    const slice = instanceNodes.slice(i, i + BATCH);
+    const mains = await Promise.all(slice.map(({ node: n }) => n.getMainComponentAsync().catch(() => null)));
+    for (let j = 0; j < slice.length; j++) resolved.push({ n: slice[j].node, page: slice[j].page, main: mains[j] });
+  }
+  const instances = [];
+  const instanceCount = new Map();
+  for (const { n, page, main } of resolved) {
+    if (!main) continue;
+    instances.push({ id: n.id, name: n.name, componentId: main.id, page });
+    instanceCount.set(main.id, (instanceCount.get(main.id) || 0) + 1);
+  }
+  for (const c of components) c.instanceCount = instanceCount.get(c.id) || 0;
+  return { source: "unified-plugin", components, instances };
+}
+
 // Plumb-family reads intentionally keep their own compact geometry+visibility summary shape — the
 // same "do not force identical semantics" principle as the rest of Block A (see
 // docs/BLOCK_A_INTEGRATION_ARCHITECTURE.md, ownership principle). The full-fidelity serializeNode
@@ -309,16 +353,32 @@ const BLEND_MODE_MAP = {
 const WEIGHT_TO_STYLE = { 100: "Thin", 200: "Extra Light", 300: "Light", 400: "Regular", 500: "Medium", 600: "Semi Bold", 700: "Bold", 800: "Extra Bold", 900: "Black" };
 const FALLBACK_FACES = [{ family: "Inter", style: "Regular" }, { family: "Roboto", style: "Regular" }];
 
+// Block A large-tree stress test (real finding, not a guess): a scaling probe isolated that
+// `figma.loadFontAsync` carries meaningful per-call latency in this environment even when called
+// repeatedly for the EXACT SAME family+style Figma has already loaded — 901 plain rects (no fonts)
+// built in 25.6s, while as few as 50 text nodes (all requesting the same "Inter Medium") alone
+// exceeded 90s. This is an intentional, documented DEVIATION from the verbatim port (see
+// docs/BLOCK_A_SOURCE_PARITY.md) — a pure performance fast-path, not a behavior change: the exact
+// same resolution/fallback algorithm runs, `loadFontAsync` is just skipped once a given family+style
+// has already succeeded once in this plugin session.
+const loadedFontKeys = new Set();
+
 async function resolveFont(family, weight) {
   const style = WEIGHT_TO_STYLE[Math.round((weight || 400) / 100) * 100] || "Regular";
   const wanted = { family: family || "Inter", style };
+  const key = `${wanted.family} ${wanted.style}`;
+  if (loadedFontKeys.has(key)) return wanted;
   try {
     await figma.loadFontAsync(wanted);
+    loadedFontKeys.add(key);
     return wanted;
   } catch (e) {
     for (const fb of FALLBACK_FACES) {
+      const fbKey = `${fb.family} ${fb.style}`;
+      if (loadedFontKeys.has(fbKey)) return fb;
       try {
         await figma.loadFontAsync(fb);
+        loadedFontKeys.add(fbKey);
         return fb;
       } catch (e2) {
         /* try next */
@@ -1592,7 +1652,8 @@ const handlers = {
   plumb: {
     status: async () => await runtimeStatus("plumb"),
     outline: async (payload) => await plumbOutline(payload),
-    "selection.read": async (payload) => await plumbSelection(payload)
+    "selection.read": async (payload) => await plumbSelection(payload),
+    components: async () => await plumbComponents()
   },
   custom: {
     status: async () => await runtimeStatus("custom"),

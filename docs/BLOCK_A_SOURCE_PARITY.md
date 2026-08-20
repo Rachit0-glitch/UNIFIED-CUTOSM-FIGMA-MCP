@@ -27,6 +27,36 @@ correct reuse mechanism for code that must run inside whichever one plugin is cu
 | `resolveNodesOrThrow`, `handleBooleanOp`, `findByPluginKey`, `handleGroupNodes`, `handleUngroupNode`, `handleCreateComponentSet`, `handleCreatePaintStyle`, `handleListStyles`, `loadStylesOfKind`, `invalidateStyleCache`, `findStyleOfKindByName`, `handleStyles`, `handleTextRange`, `toMat3`, `fromMat3`, `matMul3`, `matInverse3`, `handleMoveNode`, `handleComponentProperty`, `isDescendantOf`, `handleInstanceOverride`, `handleInstanceSwap`, `handleCreateInstance`, `handleVariableBind`, `handleVariables`, `handleSetMask` (:1025-1773) | Same names, A6/A7/A9 | verbatim | `NODE_NOT_FOUND` throws upgraded to structured errors, same as above; error-message prefixes changed from `figma_*` to `custom.*` tool names for clarity (cosmetic only) |
 | `PLUGIN_KEY`, `OPERATION_KEY` constants | Renamed `unifiedCustomMcpKey`/`unifiedCustomMcpOperationKey` | adapted (deliberate) | **Intentional difference**: a separate plugin-data namespace from the original Custom plugin's own `customMcpKey`/`customMcpOperationKey`, so Unified's sync-mode reconciliation can never collide with a real, independent original-Custom-plugin session on the same file (see `docs/PLUGIN_DATA_NAMESPACES.md`) |
 
+## Intentional deviations from verbatim porting (and why)
+
+| Function | Deviation | Justification |
+|---|---|---|
+| `resolveFont` (`figma-plugin/code.js`) | Added a session-level `loadedFontKeys` cache that skips a redundant `figma.loadFontAsync` call when the exact same family+style already succeeded once in this plugin session. | Real finding from the Block A large-tree stress test: `loadFontAsync` carries meaningful per-call latency in this environment even for an already-loaded font — 901 plain rects (no fonts) built in 25.6s, while as few as 50 text nodes (all "Inter Medium") alone exceeded 90s. This is a pure performance fast-path: the exact same resolution/fallback algorithm and return value, only the redundant repeat call is skipped. Verified: after the fix, 451 text-bearing nodes went from never-completing to ~10s; the full 901-node tree build went from never-completing to ~22-24s. See `docs/BLOCK_A_LIVE_RESULTS.md`/`docs/BLOCK_A_PERFORMANCE.md` for the full before/after measurements. |
+
+## A11 — `plumb.components` (verbatim port)
+
+`figma-plugin/code.js`'s `plumbComponents()` is a verbatim port of `plumb-mcp/figma-plugin/code.js:1914-1963`
+(`handleGetComponents`) — the batched (64-at-a-time) component/instance enumeration with cross-referenced
+instance counts, adapted only to return a plain object instead of calling Plumb's own wire-protocol
+`reply()`. Real-Figma verified: created a component + 2 real instances, confirmed `plumb.components`
+reports the correct `instanceCount: 2`.
+
+## A11 — `plumb.node.read` / `plumb.tokens` — explicitly deferred, not integrated
+
+Unlike Custom MCP's clean, modular `dist/compiler.js`/`dist/design-schema.js`/`dist/diff.js`/
+`dist/measure.js` (each independently importable with no side effects), Plumb's server-side compact-PDS
+read/token-extraction logic lives entirely inside one 11,254-line bundled `dist/index.js` designed to run
+as a standalone MCP server binary, not as a library — there is no clean modular export surface to import
+from without either (a) triggering the bundle's own top-level MCP-server-boot side effects, or (b)
+re-deriving the compact-PDS/token-extraction algorithm independently, which would violate the
+reuse-not-reimplement principle this whole integration is built on (docs/BLOCK_A_INTEGRATION_ARCHITECTURE.md).
+Separately, the read NEED itself is already fully covered — `custom.node.read`'s full-fidelity port (A1)
+provides equivalent-or-superior single-node inspection through the same one plugin; adding a second,
+Plumb-flavored compact read format would be "a duplicate Unified implementation merely to increase
+capability count," which this pass's own ownership rule explicitly forbids. This satisfies the Block A
+definition-of-done's option (B): explicitly proven unnecessary by the architecture, with technical
+justification — not silently dropped.
+
 ## Intentionally omitted (not ported this pass, and why)
 
 | Custom MCP tool | Reason omitted |

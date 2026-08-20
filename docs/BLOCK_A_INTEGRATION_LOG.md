@@ -37,7 +37,36 @@ the narrative thread connecting them.
 6. **Regression**: 82/82 unit tests, `npm run check` clean, original Custom MCP and Plumb MCP both
    confirmed still spawning/responding correctly (process/bridge level — see
    `docs/BLOCK_A_LIVE_RESULTS.md`), `git status` in `FIGMA-CUSTOM-MCP` clean (zero modifications).
-7. **Documentation**: this file plus `docs/BLOCK_A_SOURCE_PARITY.md`, `docs/BLOCK_A_LIVE_RESULTS.md`,
+7. **Documentation (checkpoint)**: `docs/BLOCK_A_SOURCE_PARITY.md`, `docs/BLOCK_A_LIVE_RESULTS.md`,
    `docs/BLOCK_A_LIMITATIONS.md`, updated `docs/BLOCK_A_CAPABILITY_MATRIX.md`/`BLOCK_A_DESIGN_READINESS.
-   md`/`BLOCK_A_TEST_PLAN.md`/`BLOCK_A_RESULTS.md`, `README.md`, `docs/CAPABILITY_REGISTRY.md`.
-8. **Commit and push** — see `docs/BLOCK_A_RESULTS.md` for the final commit hash and verdict.
+   md`/`BLOCK_A_TEST_PLAN.md`/`BLOCK_A_RESULTS.md`, `README.md`, `docs/CAPABILITY_REGISTRY.md`. Committed
+   as `53916c6` with verdict `UNIFIED CAPABILITY INTEGRATION: PARTIAL`.
+8. **A11 (Plumb completion)**: ported `plumb.components` verbatim from Plumb's own `handleGetComponents`
+   (batched component/instance enumeration). Live-tested with a real component + 2 instances: 7/7 PASS,
+   correct `instanceCount: 2`. `plumb.node.read`/`plumb.tokens` explicitly deferred with technical
+   justification (Plumb's server logic lives in one 11,254-line bundled file, no clean modular export
+   surface — see `docs/BLOCK_A_SOURCE_PARITY.md`).
+9. **Gap closure**: real-Figma tested every remaining "wired but not independently tested" capability —
+   `custom.boolean`, `custom.create_component_set` (+ operationKey idempotency), `custom.instance_swap`,
+   `custom.styles` (text/effect/grid), `custom.component_property` (add+edit). 12/12 PASS.
+10. **Timeout investigation**: added orphan-response detection to `src/runtime/unifiedBridge.js`
+    (3 new unit tests prove it correct). Ran a controlled scaling investigation
+    (`scripts/scaling-probe.mjs`) that isolated the real root cause of large-tree timeouts: uncached
+    `figma.loadFontAsync` calls in `resolveFont`. Fixed with a session-level font cache — a documented,
+    intentional deviation from the verbatim port. Before/after: 151-node builds went from never
+    completing (>90s) to ~3.5s.
+11. **Large-tree stress test**: built and fully exercised a real 901-node tree (reads at all depths,
+    `include`-filtered read, measure/diff/patch/verify, idempotency, and sync-mode reconciliation at
+    scale with zero duplication). 16/16 PASS after the font-cache fix; two earlier runs correctly and
+    usefully failed with real timeout evidence before the fix.
+12. **Full system acceptance**: one continuous session through the required Plumb→Custom→P2→P3→Plumb
+    sequence, building a real mini design (nested auto-layout, typography, appearance, local image
+    import, hierarchy changes, component/instance behavior, styles/variables, masks) and running the
+    full inspect→measure→diff→correct→verify→verify-again loop against it, then confirming Plumb sees
+    everything Custom built. 21/21 PASS, first try, zero plugin reload needed.
+13. **Final regression**: 85/85 unit tests, `npm run check` clean, original Plumb/Custom MCP confirmed
+    still working independently (process/bridge level), `git status` in `FIGMA-CUSTOM-MCP` clean.
+14. **Final documentation**: this file plus every `docs/BLOCK_A_*.md` updated to reflect the actual final
+    implementation, `README.md` and `docs/CAPABILITY_REGISTRY.md` updated, verdict moved from PARTIAL to
+    **PASS** with full supporting evidence in `docs/BLOCK_A_FINAL_REPORT.md`.
+15. **Commit and push** — see `docs/BLOCK_A_FINAL_REPORT.md` for the final commit hash and verdict.

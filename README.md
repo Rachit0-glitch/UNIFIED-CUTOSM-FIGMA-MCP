@@ -49,24 +49,25 @@ Stage 4 docs:
 
 ## Block A Status
 
-**`UNIFIED CAPABILITY INTEGRATION: PARTIAL`** — see `docs/BLOCK_A_FINAL_REPORT.md` for the exact-format
-final report and `docs/BLOCK_A_RESULTS.md` for a shorter summary. Block A integrates the mature Plumb
-and Custom MCP capability surfaces into the one hardened Unified runtime, reusing real source-of-truth
-logic rather than reimplementing it (`docs/BLOCK_A_INTEGRATION_ARCHITECTURE.md`: reuse-by-import for
-pure Node logic — the actual `figma-custom-mcp` compiler/schema/diff/measure modules are a real
-dependency — vs. reuse-by-porting, verbatim, for Figma-plugin-sandbox code, which must physically run
-inside whichever one plugin is currently paired).
+**`UNIFIED CAPABILITY INTEGRATION: PASS`** — see `docs/BLOCK_A_FINAL_REPORT.md` for the exact-format
+final report. Block A integrates the mature Plumb and Custom MCP capability surfaces into the one
+hardened Unified runtime, reusing real source-of-truth logic rather than reimplementing it
+(`docs/BLOCK_A_INTEGRATION_ARCHITECTURE.md`: reuse-by-import for pure Node logic — the actual
+`figma-custom-mcp` compiler/schema/diff/measure modules are a real dependency — vs. reuse-by-porting,
+verbatim, for Figma-plugin-sandbox code, which must physically run inside whichever one plugin is
+currently paired).
 
-28 capabilities are now registered (up from 6 before this pass): full-fidelity reads (A1), the complete
-create/update/delete/reorder write path (A2), hierarchy/reparenting (A6), components/instances/grouping
-(A7), P2 advanced operations — masks, paint styles, variables (A9), and the complete P3
-inspect→measure→diff→correct→verify→idempotency loop (A10) — all real-Figma-verified, including a real
-local-image import (the exact P0 gap `FIGMA/PLUMB_GAP_ANALYSIS.md` documents Plumb as structurally
-incapable of) and a mini-design acceptance test combining structure/typography/appearance/layout/P3/
-cross-family coexistence in one composition. PARTIAL rather than COMPLETE because a large-tree stress
-test, a few A7/A9 capabilities' independent live verification, and A11 (further Plumb integration)
-remain — see `docs/BLOCK_A_LIMITATIONS.md` for the complete, honest accounting. Full capability
-inventory: `docs/BLOCK_A_CAPABILITY_MATRIX.md`. Real-Figma test evidence: `docs/BLOCK_A_LIVE_RESULTS.md`.
+29 capabilities are registered (up from 6 at the start of Block A): full-fidelity reads, the complete
+create/update/delete/reorder write path, hierarchy/reparenting, components/instances/grouping, P2
+advanced operations (masks, paint/text/effect/grid styles, component properties, variables), the
+complete P3 inspect→measure→diff→correct→verify→idempotency loop, and file-wide Plumb component
+extraction — **every one real-Figma-verified**, including a real local-image import (the exact P0 gap
+`FIGMA/PLUMB_GAP_ANALYSIS.md` documents Plumb as structurally incapable of), a 901-node large-tree stress
+test (after finding and fixing a real font-loading performance bug), and a one-continuous-session
+Plumb→Custom→P2→P3→Plumb full-system acceptance run (21/21, zero manual plugin switching, zero restarts,
+zero orphan responses). `plumb.node.read`/`plumb.tokens` are explicitly deferred with technical
+justification, not silently missing — see `docs/BLOCK_A_SOURCE_PARITY.md`. Full capability inventory:
+`docs/BLOCK_A_CAPABILITY_MATRIX.md`. Real-Figma test evidence: `docs/BLOCK_A_LIVE_RESULTS.md`.
 
 ## Pre-Block-A Hardening Status
 

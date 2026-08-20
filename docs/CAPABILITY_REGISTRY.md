@@ -17,6 +17,7 @@ It is the source of truth for what the production Unified runtime advertises and
 | `plumb.status` | `plumb` | `status` | false | Unified plugin Plumb-family status. |
 | `plumb.outline` | `plumb` | `outline` | false | Reads pages and top-level screens. |
 | `plumb.selection.read` | `plumb` | `selection.read` | false | Reads current selection summaries. |
+| `plumb.components` | `plumb` | `components` | false | **A11**: file-wide COMPONENT/COMPONENT_SET enumeration cross-referenced with INSTANCE counts. Verbatim port of Plumb's own `handleGetComponents`. |
 | `custom.status` | `custom` | `status` | false | Unified plugin Custom-family status. |
 | `custom.node.read` | `custom` | `node.read` | false | **Block A / A1**: full-fidelity read (geometry/layout/appearance/text/component/variables/styles/metadata), verbatim-ported from Custom MCP's real serializer. Optional `include` filters to specific categories. Reads a node by ID or current page if omitted. |
 | `custom.selection.read` | `custom` | `selection.read` | false | Same A1 full-fidelity upgrade as `custom.node.read`, applied to the current selection. |
@@ -36,9 +37,10 @@ It is the source of truth for what the production Unified runtime advertises and
 | `custom.set_mask` | `custom` | `mask.set` | true | **A9** |
 | `custom.diff` / `custom.verify` / `custom.measure` | `custom` | `diff` / `verify` / `measure` | false | **A10 (compound capabilities)**: P3 structural diff / expectation verification / deterministic geometric measurement, via the real imported `figma-custom-mcp` diff.js/measure.js. These bypass the normal protocol-adapter path — see `src/runtime/compoundCapabilities.js` and `commandRouter.js`'s `capability.compound` branch. |
 
-All 25 Custom-family + 3 Plumb-family capabilities above are real-Figma-verified except where noted in
-`docs/BLOCK_A_CAPABILITY_MATRIX.md` (a handful of A7/A9 capabilities are schema+plugin-wired but not yet
-independently live-tested — see that doc and `docs/BLOCK_A_LIMITATIONS.md` for the exact list).
+All 25 Custom-family + 4 Plumb-family capabilities above are real-Figma-verified, including at a 901-node
+stress-test scale and in one continuous Plumb→Custom→P2→P3→Plumb acceptance run — see
+`docs/BLOCK_A_LIVE_RESULTS.md`. `plumb.node.read`/`plumb.tokens` are explicitly deferred with technical
+justification, not silently missing — see `docs/BLOCK_A_SOURCE_PARITY.md`.
 
 ## Unsupported
 

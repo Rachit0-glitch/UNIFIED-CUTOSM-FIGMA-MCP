@@ -16,6 +16,8 @@ export class PlumbProtocolAdapter {
       normalized = payload.page ? { page: payload.page } : {};
     } else if (capability.operation === "selection.read") {
       normalized = { depth: payload.depth, notes: Boolean(payload.notes), maxTokens: payload.maxTokens };
+    } else if (capability.operation === "components") {
+      normalized = {};
     } else if (capability.operation !== "status") {
       throw new UnifiedError(ERROR_CODES.INVALID_COMMAND, `Unsupported Plumb operation: ${capability.operation}.`, { source: this.family });
     }

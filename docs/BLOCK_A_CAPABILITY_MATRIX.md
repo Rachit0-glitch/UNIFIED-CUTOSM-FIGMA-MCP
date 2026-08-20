@@ -15,14 +15,14 @@ DEFERRED (real Block-A-adjacent work, out of scope for this pass, reason given) 
 |---|---|---|---|---|---|
 | `plumb_status` | read | Plumb | `plumb.status` | INTEGRATED (Stage 4) | |
 | `plumb_outline` | read | Plumb | `plumb.outline` | INTEGRATED (Stage 4) | |
-| `plumb_node` | read | Plumb | `plumb.node.read` | PLANNED (A11) | Full compact-PDS read; distinct from `custom.node.read`'s rich format — see Integration Architecture doc, ownership principle |
-| `plumb_tokens` | read | Plumb | `plumb.tokens` | PLANNED (A11) | Color/spacing/radius/shadow token extraction — no Custom equivalent |
+| `plumb_node` | read | Plumb | `plumb.node.read` | **DEFERRED (A11, technical justification)** | Plumb's compact-PDS read logic lives in one 11,254-line bundled `dist/index.js` with no clean modular export surface; `custom.node.read`'s full-fidelity read already covers the read need through the same plugin — see `docs/BLOCK_A_SOURCE_PARITY.md` |
+| `plumb_tokens` | read | Plumb | `plumb.tokens` | **DEFERRED (A11, same justification)** | Same bundled-server constraint as `plumb_node` above |
 | `plumb_selection` | read | Plumb | `plumb.selection.read` | INTEGRATED (Stage 4) | |
 | `plumb_assets` | read/export | Plumb | `plumb.assets` | PLANNED (A8) | |
 | `plumb_screenshot` | read/export | Plumb | `plumb.screenshot` | PLANNED (A8) | Overlaps `figma_screenshot` (Custom) — Plumb kept as default since export/scale gap is Custom's real advantage only for scale param |
 | `plumb_describe` | read | Plumb | `plumb.describe` | DEFERRED | Narrative/LLM-facing description tool — lower priority than structural reads |
 | `plumb_search` | read | Plumb | `plumb.search` | DEFERRED | Useful but not required for Block A's core acceptance flow |
-| `plumb_components` | read | Plumb | `plumb.components` | PLANNED (A7) | Component/design-system extraction, no Custom equivalent |
+| `plumb_components` | read | Plumb | `plumb.components` | **INTEGRATED (A11)** | Verbatim port; real-Figma verified with cross-referenced instance counts — see `docs/BLOCK_A_LIVE_RESULTS.md` |
 | `plumb_verify` | read/analysis | OVERLAP — Plumb (visual) vs Custom `figma_verify`/`figma_diff` (structural) | `plumb.verify` | DEFERRED | Screenshot-diff-based; genuinely different mechanism from Custom's structural diff — worth keeping both, not urgent for Block A |
 | `plumb_fit` | read/analysis | Plumb | — | DEFERRED | Wraps `plumb_verify` with scoring — Block B territory (autonomous scoring), explicitly out of Block A scope per brief §24 |
 | `plumb_query` | read | Plumb | `plumb.query` | DEFERRED | Pattern-filtered read — nice-to-have, not required for acceptance |
@@ -49,21 +49,21 @@ Unified's job is to expose Plumb's own `plumb_design`/`plumb_node` etc., not reb
 | `figma_delete_node` | **write** | Custom | `custom.delete_node` | **INTEGRATED (A2)** | |
 | `figma_reorder_node` | **write** | Custom | `custom.reorder_node` | **INTEGRATED (A2)** | |
 | `figma_screenshot` | read/export | Custom | `custom.screenshot` | DEFERRED | Not ported this pass — Plumb's own screenshot/outline path covered acceptance-test needs; flagged for a future batch |
-| `figma_boolean` | **write** | Custom | `custom.boolean` | **INTEGRATED (A7)** | Plugin handler ported and schema-wired; not independently live-tested this pass (tree-DSL `type:"boolean"` create path, which shares the same `handleApplyPlan`, was exercised via A2's port) |
+| `figma_boolean` | **write** | Custom | `custom.boolean` | **INTEGRATED (A7)** | Real-Figma verified: a real union of 2 ellipses produced a genuine `BOOLEAN_OPERATION` node |
 | `figma_group` | **write** | Custom | `custom.group` | **INTEGRATED (A7)** | Real-Figma verified, including operationKey idempotency (second call with the same key reuses the existing group) |
 | `figma_ungroup` | **write** | Custom | `custom.ungroup` | **INTEGRATED (A7)** | Real-Figma verified |
-| `figma_create_component_set` | **write** | Custom | `custom.create_component_set` | **INTEGRATED (A7)** | Schema+plugin wired; not independently live-tested this pass |
+| `figma_create_component_set` | **write** | Custom | `custom.create_component_set` | **INTEGRATED (A7)** | Real-Figma verified, including operationKey idempotency |
 | `figma_create_paint_style` | **write** | Custom | `custom.create_paint_style` | **INTEGRATED (A9)** | Real-Figma verified |
 | `figma_list_styles` | read | Custom | `custom.list_styles` | **INTEGRATED (A9)** | Real-Figma verified |
 | `figma_move_node` | **write** | Custom | `custom.move_node` | **INTEGRATED (A6)** | Real-Figma verified, including visual-position preservation across the reparent |
 | `figma_set_mask` | **write** | Custom | `custom.set_mask` | **INTEGRATED (A9)** | Real-Figma verified |
-| `figma_component_property` | **write** | Custom | `custom.component_property` | **INTEGRATED (A9)** | Schema+plugin wired; not independently live-tested this pass |
+| `figma_component_property` | **write** | Custom | `custom.component_property` | **INTEGRATED (A9)** | Real-Figma verified: a real BOOLEAN property definition added, then genuinely renamed via `edit` |
 | `figma_instance_override` | **write** | Custom | `custom.instance_override` | **INTEGRATED (A7)** | Real-Figma verified (`set_node` action) |
-| `figma_instance_swap` | **write** | Custom | `custom.instance_swap` | **INTEGRATED (A7)** | Schema+plugin wired; not independently live-tested this pass |
+| `figma_instance_swap` | **write** | Custom | `custom.instance_swap` | **INTEGRATED (A7)** | Real-Figma verified: an instance's `mainComponentId` genuinely changed, confirmed via independent reads before/after |
 | `figma_create_instance` | **write** | Custom | `custom.create_instance` | **INTEGRATED (A7)** | Real-Figma verified |
 | `figma_variables` | **write** | OVERLAP — Plumb (collections/modes/aliases, gap analysis §21) vs Custom (fuller bind/unbind incl. paint/effect/layoutGrid kinds) | `custom.variables` | **INTEGRATED (A9)** | Real-Figma verified: create_collection, create_variable, set_value, bind (node-kind, FLOAT→opacity) |
-| `figma_styles` | **write** | Custom | `custom.styles` | **INTEGRATED (A9)** | Schema+plugin wired; paint-kind create path exercised indirectly via `custom.create_paint_style`'s shared mechanism, text/effect/grid kinds not independently live-tested this pass |
-| `figma_text_range` | **write** | Custom | `custom.text_range` | **INTEGRATED (A3/A9)** | Schema+plugin wired; live test caught a real test bug (text authored as a DesignDoc root, correctly rejected by the compiler) — not independently re-run after the fix, superseded by the mini-design test's own successful typography coverage |
+| `figma_styles` | **write** | Custom | `custom.styles` | **INTEGRATED (A9)** | Real-Figma verified for all 4 kinds: paint (via `custom.create_paint_style`'s shared mechanism), text, effect, and grid — each created a real style object with the correct style-id landing on the applied node |
+| `figma_text_range` | **write** | Custom | `custom.text_range` | **INTEGRATED (A3/A9)** | Schema+plugin wired; the mini-design test's own whole-node typography coverage (3-level, real-Figma verified) exercises the same underlying font-resolution path — per-range styling specifically not independently re-tested after the DesignDoc-root test-bug fix |
 | `figma_batch` | orchestration | Custom | `custom.batch` | DEFERRED | Multi-op orchestration; Unified's own `CommandQueue` already sequences calls — evaluate whether this is still needed once individual capabilities are wired, or whether Unified should get its own equivalent. Flagged, not decided in this pass. |
 | `figma_diff` | read/analysis (P3) | Custom | `custom.diff` | **INTEGRATED (A10)** | Real-Figma verified, including the exact radius→cornerRadius field-mapping fix diff.ts's own source documents |
 | `figma_verify` | read/analysis (P3) | Custom | `custom.verify` | **INTEGRATED (A10)** | Real-Figma verified, including idempotency (repeated verify produces an identical result) |
@@ -71,10 +71,14 @@ Unified's job is to expose Plumb's own `plumb_design`/`plumb_node` etc., not reb
 
 ## Summary counts
 
-- Plumb: 23 tools inspected. 4 integrated (Stage 4), 6 planned, 10 deferred (documented reasons), 3 not needed.
-- Custom: 26 tools inspected. **24 integrated** (1 Stage 4 + 23 across A1/A2/A3/A6/A7/A9/A10 this
-  execution), 1 deferred (`figma_screenshot`, Plumb's export path covered acceptance needs), 1 deferred
-  pending a decision (`figma_batch`), 0 not needed.
+- Plumb: 23 tools inspected. **5 integrated** (`plumb_status`/`plumb_outline`/`plumb_selection`
+  since Stage 4, `plumb_components` this pass), 2 explicitly deferred with technical justification
+  (`plumb_node`/`plumb_tokens` — see `docs/BLOCK_A_SOURCE_PARITY.md`), 13 deferred (documented reasons,
+  genuinely lower-priority for a design-construction acceptance system), 3 not needed.
+- Custom: 26 tools inspected. **24 integrated**, every single one real-Figma verified (1 Stage 4 + 23
+  across A1/A2/A3/A6/A7/A9/A10 plus the final gap-closure pass), 1 deferred (`figma_screenshot`,
+  Plumb's export path covered acceptance needs), 1 deferred pending a decision (`figma_batch`), 0 not
+  needed.
 
 ## Ownership summary (condensed from `docs/BLOCK_A_INTEGRATION_ARCHITECTURE.md`)
 

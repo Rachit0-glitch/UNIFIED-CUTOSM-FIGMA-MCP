@@ -129,16 +129,59 @@ requirement.
 
 ## A11 — Plumb integration completion
 
-**Not executed this pass.** `plumb.node.read`, `plumb.tokens`, `plumb.components` remain unintegrated —
-see `docs/BLOCK_A_CAPABILITY_MATRIX.md`. What WAS verified: `plumb.outline`/`plumb.selection.read`
-(already live since Stage 4) correctly see content built via the new Custom-family write capabilities,
-through the same one plugin connection, with zero manual switching (the mini-design test's cross-family
-step).
+**Result: REAL FIGMA VERIFIED, PASS.** `scripts/block-a-a11-live.mjs`, 7/7. `plumb.components` (verbatim
+port of Plumb's own file-wide component/instance enumeration) integrated and verified with a real
+component + 2 real instances, correctly cross-referenced (`instanceCount: 2`). `plumb.node.read`/
+`plumb.tokens` explicitly deferred with technical justification — see `docs/BLOCK_A_SOURCE_PARITY.md`.
+`plumb.outline`/`plumb.selection.read`/`plumb.status`/`plumb.components` all confirmed correctly seeing
+content built via Custom-family write capabilities, through the same one plugin connection, in both the
+mini-design test and the final full-system acceptance run below.
 
-## Mini-design acceptance (brief §21/§46-48)
+## Gap closure — every remaining schema+plugin-wired-but-not-independently-tested capability
+
+**Result: REAL FIGMA VERIFIED, PASS.** `scripts/block-a-close-gaps.mjs`, 12/12. `custom.boolean` (real
+union of 2 ellipses → genuine `BOOLEAN_OPERATION`), `custom.create_component_set` (2 real components →
+real `COMPONENT_SET` with 2 variants, plus verified `operationKey` idempotency), `custom.instance_swap`
+(instance's `mainComponentId` genuinely changed, confirmed via independent reads before/after),
+`custom.styles` for text/effect/grid kinds (each created a real style object with the correct
+style-id field landing on the target node), `custom.component_property` (add + edit, both genuinely
+mutating the real component's property definitions). This closes every remaining gap named in the
+previous checkpoint's `docs/BLOCK_A_LIMITATIONS.md`.
+
+## Timeout investigation (brief §4)
+
+**Result: root cause found and fixed, with real evidence — not a guess.** See `docs/BLOCK_A_LIVE_RESULTS.md`'s
+Timeout Investigation section and `docs/BLOCK_A_PERFORMANCE.md` for the full scaling investigation,
+before/after measurements, and retry-safety review. Summary: `figma.loadFontAsync`'s uncached per-call
+latency was the real bottleneck (isolated via a controlled scaling probe, not assumed), fixed with a
+session-level font cache. Bridge instrumentation (orphan-response detection) was added and proven
+correct in 3 new unit tests (`tests/bridge-timeout.test.js`); zero orphan responses were observed in any
+live test after the font-cache fix landed.
+
+## Large-tree stress test (brief §3, target 500-1000 nodes)
+
+**Result: REAL FIGMA VERIFIED, PASS, 16/16.** `scripts/block-a-large-tree.mjs` — a genuine 901-node tree
+(300 cards, 3 nodes each, in a wrapping auto-layout grid). Exercised: build, reads at depth 1/5/10/20,
+`include`-filtered read (confirmed ~9x payload reduction), `plumb.outline`, a direct deep single-node
+read, `custom.measure`/`custom.diff`/`custom.patch_node`/`custom.verify` at scale, **idempotency**
+(repeated verify → identical result), and `custom.design`'s **sync-mode reconciliation at scale**
+(re-applying the identical 901-node doc produced `created:0, updated:901` — zero duplication), plus
+cleanup. Full measurements: `docs/BLOCK_A_PERFORMANCE.md`.
+
+## Full system acceptance (brief §5)
+
+**Result: REAL FIGMA VERIFIED, PASS, 21/21, first try, zero plugin reload needed.**
+`scripts/block-a-full-acceptance.mjs` — one continuous session through the exact required sequence:
+Plumb (initial inspection) → Custom (build + hierarchy + components) → P2 (styles/variables/masks) → P3
+(inspect→measure→diff→correct→verify→verify-again for idempotency) → Plumb again (confirms it sees
+everything Custom built, with zero runtime degradation). Manual plugin switching: 0. Plugin restarts: 0.
+Orphan responses: 0. Full breakdown: `docs/BLOCK_A_LIVE_RESULTS.md`.
+
+## Mini-design acceptance (brief §21/§46-48, earlier checkpoint)
 
 **Result: REAL FIGMA VERIFIED, PASS, 12/12, first try.** `scripts/block-a-mini-design.mjs` — a real
 hero-section composition combining structure, geometry, typography, appearance, layout, and a local
 image import in one `custom.design` call, then a full P3 pass (measure/verify/idempotency) and a
-cross-family Plumb read against the same live content, then cleanup. See `docs/BLOCK_A_LIVE_RESULTS.md`
-for the full breakdown.
+cross-family Plumb read against the same live content, then cleanup. Superseded in scope (but not
+correctness) by the full system acceptance run above, which covers the same ground plus P2, hierarchy,
+and components in one sequence. See `docs/BLOCK_A_LIVE_RESULTS.md` for the full breakdown.

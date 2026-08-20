@@ -70,6 +70,116 @@ not a stock-photo substitute, the exact P0 gap this whole project exists to clos
   same one plugin connection — real cross-family coexistence).
 - Deleted the whole composition and confirmed it was gone via a fresh read.
 
+## A11 — plumb.components
+
+`scripts/block-a-a11-live.mjs`. 7/7 PASS. Real component + 2 real instances built; `plumb.components`
+correctly reported `instanceCount: 2` for the component, cross-referenced from the live instance nodes
+(not a static/fabricated count). Also included a 40-call rapid-fire burst under the new bridge
+instrumentation (see Timeout Investigation below) — 0/40 timeouts that particular run.
+
+## Gap closure — every remaining "wired but not independently live-tested" capability
+
+`scripts/block-a-close-gaps.mjs`. **12/12 PASS.** `custom.boolean` (real union of 2 ellipses produced a
+genuine `BOOLEAN_OPERATION` node), `custom.create_component_set` (2 real components combined into a
+real `COMPONENT_SET` with 2 variants, plus `operationKey` idempotency — a second identical call reused
+the existing set), `custom.instance_swap` (an instance's `mainComponentId` genuinely changed from one
+component to another, confirmed by independent reads before and after), `custom.styles` for all 3
+remaining kinds (text/effect/grid — each created a real Figma style object and, where applicable, applied
+it to a node with the correct style-id field set), `custom.component_property` (a real `BOOLEAN` property
+definition added and later renamed via `edit`). This closes every capability previously marked
+"schema+plugin wired but not independently live-tested" in `docs/BLOCK_A_CAPABILITY_MATRIX.md`.
+
+## Timeout investigation
+
+Instrumented `src/runtime/unifiedBridge.js` with a bounded "recent timeouts" ring buffer and an
+orphan-response detector: any response that arrives for a `requestId` that already timed out is now
+recorded (`bridge.status().diagnostics`) instead of being silently discarded — the exact mechanism that
+would explain "operation actually succeeded, caller saw COMMAND_TIMEOUT." Proven correct in isolation via
+3 new unit tests (`tests/bridge-timeout.test.js`) using a fake WebSocket transport.
+
+**Root cause found via a real scaling investigation, not guessed**: a scaling probe (`scripts/
+scaling-probe.mjs`) isolated that `figma.loadFontAsync` carries meaningful per-call latency in this
+environment even for an already-loaded font/style — 901 plain rects (zero fonts) built in 25.6s, while as
+few as 50 text nodes (all requesting the identical "Inter Medium") alone exceeded 90 seconds. A
+same-scale, hierarchical-tree variant (multiple small auto-layout sections instead of one wide wrapping
+row) ruled out "many auto-layout siblings" as the cause — the slowdown tracked text-node count, not tree
+shape. Fixed with a session-level font-resolution cache in `resolveFont()` (`figma-plugin/code.js`) — a
+documented, intentional deviation from the verbatim port (see `docs/BLOCK_A_SOURCE_PARITY.md`), not a
+behavior change. **Before/after**: 150 cards / 451 nodes went from never completing (>90s, repeatedly) to
+~10s; the full 901-node stress-test tree went from never completing to ~22-24s.
+
+After the fix, the full large-tree stress test and the full-system acceptance run (both below) produced
+**zero orphan responses** across dozens of real bridge round-trips, including several multi-second
+operations — strong evidence that the majority (very plausibly all) of the "transient COMMAND_TIMEOUT"
+occurrences observed earlier in Block A were explained by this font-loading cost exceeding
+under-provisioned timeout budgets, not a genuine lost/dropped WebSocket message. The instrumentation
+remains in place and armed for any future recurrence.
+
+**Retry-safety review** (real, not assumed): `custom.patch_node`/`custom.delete_node`/
+`custom.reorder_node`/`custom.move_node` are naturally safe to retry (re-applying the same target state
+is a no-op difference; deleting an already-deleted node reports `NODE_NOT_FOUND` rather than corrupting
+anything). `custom.group`/`custom.create_component_set` have explicit `operationKey`-based
+check-before-create idempotency, live-verified both here and in the gap-closure tests above.
+`custom.design`'s default `mode:"create"` is genuinely NOT safe to blindly retry (a retry creates
+duplicate nodes) — its `mode:"sync"` IS safe, and this was explicitly verified at real scale in the
+large-tree stress test below (re-running the identical 901-node doc in sync mode produced `created:0,
+updated:901`, not a single duplicate).
+
+**A real, separate operational finding surfaced during this investigation**: the Figma file used for all
+this testing is on Figma's free "Starter" plan, which caps a file at 3 pages — a scaling-probe attempt to
+create a 4th page hit a real `FIGMA_API_ERROR` ("The Starter plan only comes with 3 pages"). Not a bug in
+this codebase, but a real environmental constraint worth recording — all Block A testing was consolidated
+onto a single reused "Block A Scratch" page specifically to work within it.
+
+## Large-tree stress test (901 nodes)
+
+`scripts/block-a-large-tree.mjs`. **16/16 PASS** after the font-cache fix (was previously blocked
+entirely — see Timeout Investigation above). Built a real 901-node tree (300 "cards," each a frame with
+a rect + text child, in a wrapping auto-layout grid) in ~22-24s. Real measurements:
+
+| Operation | Duration | Payload |
+|---|---|---|
+| Build (901 nodes, create mode) | ~22-24s | 43.6KB (response) |
+| Read depth=1 | ~4.6s | 385KB |
+| Read depth=5 | ~10.5s | 1.12MB |
+| Read depth=10 | ~10s | 1.12MB (identical to depth=5 — real tree depth is only 3) |
+| Read depth=20 | ~9s | 1.12MB |
+| Read depth=20, `include:["metadata"]` | 0.86s | 128KB (a genuine ~9x size reduction) |
+| `plumb.outline` | 0.3s | 45.5KB |
+| Direct single-node read (1 of 900 descendants) | 24ms | 2.2KB |
+| `custom.measure` (2 nodes in the tree) | 35ms | 875B |
+| `custom.diff` (1 node in the tree) | 48ms | 1.1KB |
+| `custom.patch_node` (1 deeply-nested node) | 15ms | 863B |
+| `custom.verify` (correction + untouched sibling) | 89ms | 1KB |
+| `custom.verify` again (idempotency) | 87ms | identical result to the previous call |
+| `custom.design` sync-mode reconcile of the SAME 901-node doc | ~28s | `created:0, updated:901` — zero duplication |
+
+Also confirmed: patching one node 900-deep in the tree left its sibling completely untouched (no
+collateral mutation), and `plumb.outline` correctly listed the tree's single top-level screen alongside
+900 descendants it never had to walk. Zero orphan responses across the entire run.
+
+## Full system acceptance (Plumb → Custom → P2 → P3 → Plumb)
+
+`scripts/block-a-full-acceptance.mjs`. **21/21 PASS, first try, no plugin reload needed.** One
+continuous session:
+
+1. **Plumb**: `plumb.outline` + `plumb.components` — initial inspection.
+2. **Custom**: built a real hero composition (nested auto-layout, 3-level typography, fills/strokes/
+   corner-radii/effects, a genuine local `file:` PNG import), then exercised hierarchy (`move_node`
+   reparenting the CTA out and back, visual position preserved both times) and components
+   (`create_instance` + `instance_override`).
+3. **P2**: a real TextStyle created and applied; a real FLOAT variable created, valued, and bound to a
+   node's opacity; `set_mask` genuinely set `isMask` on a real node.
+4. **P3**: `custom.node.read` (inspect) → `custom.measure` → `custom.diff` (detected a deliberate
+   mismatch) → `custom.patch_node` (correct) → `custom.verify` (0 differences) → `custom.verify` again
+   (byte-for-byte identical result — idempotency).
+5. **Plumb again**: `plumb.outline` sees the Custom-built hero frame; `plumb.components` sees the
+   Custom-built component with the correct `instanceCount: 1`; `plumb.selection.read` still responds
+   normally — no runtime degradation after the full sequence.
+6. Cleanup: full composition deleted and confirmed absent.
+
+**Manual plugin switching: 0. Plugin restarts during acceptance: 0. Orphan responses: 0.**
+
 ## Original system regression
 
 - Original Custom MCP: `node scripts/unified-probe.mjs unified_probe_backend '{"backend":"custom"}'` —

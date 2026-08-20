@@ -361,6 +361,17 @@ export const STAGE4_CAPABILITIES = Object.freeze([
     schema: PlumbSelectionReadSchema
   },
   {
+    id: "plumb.components",
+    family: "plumb",
+    operation: "components",
+    description: "Enumerate every COMPONENT/COMPONENT_SET across the whole file, cross-referenced with INSTANCE counts. Genuinely new capability — no Custom equivalent (Custom operates on individual nodes/instances, never enumerates file-wide). Verbatim port of Plumb's own component/instance extraction.",
+    mutation: false,
+    enabled: true,
+    stage: "blockA-a11",
+    timeoutMs: 15000,
+    schema: EmptyPayloadSchema
+  },
+  {
     id: "custom.status",
     family: "custom",
     operation: "status",
@@ -379,7 +390,10 @@ export const STAGE4_CAPABILITIES = Object.freeze([
     mutation: false,
     enabled: true,
     stage: "4",
-    timeoutMs: 8000,
+    // Block A large-tree stress test (real finding): a full-fidelity read of a ~900-node tree
+    // (1.1MB JSON payload) took ~7-8s and one run timed out at 8016ms against the old 8000ms budget
+    // — a genuine near-miss, not a guess. 25000ms gives real headroom for large real trees.
+    timeoutMs: 25000,
     schema: CustomNodeReadSchema
   },
   {
@@ -390,7 +404,7 @@ export const STAGE4_CAPABILITIES = Object.freeze([
     mutation: false,
     enabled: true,
     stage: "4",
-    timeoutMs: 8000,
+    timeoutMs: 25000,
     schema: CustomSelectionReadSchema
   },
   {
@@ -401,7 +415,12 @@ export const STAGE4_CAPABILITIES = Object.freeze([
     mutation: true,
     enabled: true,
     stage: "blockA-a2",
-    timeoutMs: 20000,
+    // Block A large-tree stress test (real finding, not a guess): a 901-node build (300 cards, each
+    // with a font-loaded text label) genuinely takes longer than 20000ms end-to-end inside the plugin
+    // sandbox — a real COMMAND_TIMEOUT was observed and reproduced live. 90000ms gives real headroom
+    // for large real-world compositions without masking genuine hangs (still a hard ceiling, not
+    // "unlimited") — see docs/BLOCK_A_LIVE_RESULTS.md for the measured actual duration.
+    timeoutMs: 90000,
     schema: CustomDesignSchema
   },
   {

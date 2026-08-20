@@ -1,67 +1,62 @@
 # Block A Limitations
 
-Real, known limitations only — nothing artificially inflated, nothing swept under the rug.
+Real, known limitations only — nothing artificially inflated, nothing swept under the rug. Several
+limitations from the previous checkpoint have since been genuinely resolved (documented as such, not
+deleted — see the "Resolved" section) rather than quietly removed.
 
-## Transient response-delivery timeouts
+## Remaining limitations
 
-Observed at least 5 times across this session's live testing, on different operations each time
-(`custom.design`, `custom.node.read`, `custom.delete_node`, `custom.variables`): a call reports
-`COMMAND_TIMEOUT` (8000ms, zero response ever arrives) even though the underlying Figma-side operation
-either already succeeded or succeeds cleanly on immediate retry. Confirmed NOT a data-correctness issue
-every time it was investigated — the operation's real effect (a deleted node staying deleted, a design
-compiling and building correctly) was independently verified via a follow-up read. One instance (a
-`custom.variables` `set_value` call) was confirmed as a genuinely failed attempt, not merely a lost
-response to a real success — the value had NOT been written when checked immediately after the timeout,
-and only landed on retry.
+### `plumb.node.read` / `plumb.tokens` not integrated
 
-**Root cause not identified** — this environment has no access to Figma's own devtools/console, so the
-exact failure point (a dropped WebSocket frame, a UI-thread stall under rapid successive round trips, a
-timing edge case in Figma's own `postMessage` relay) could not be isolated. It appears correlated with
-long bursts of rapid sequential calls (never observed on an isolated, first call after pairing) but this
-is an observation, not a proven cause.
+Deliberately deferred with technical justification, not an oversight — see `docs/BLOCK_A_SOURCE_PARITY.md`
+("A11 — explicitly deferred"). Plumb's server-side compact-PDS/token logic lives in one 11,254-line
+bundled `dist/index.js` with no clean modular export surface (unlike Custom MCP's clean, independently
+importable `dist/*.js` modules), and the underlying read need is already fully covered by
+`custom.node.read`'s full-fidelity port through the same one plugin.
 
-**Practical impact**: low. Every occurrence resolved on a single retry, with no observed data corruption
-or partial-state issue. A real MCP client (an LLM session, not a test script) would see a normal
-`COMMAND_TIMEOUT` error and could reasonably retry or re-verify state — exactly the kind of scenario
-`custom.verify`/`custom.diff` exist to make cheap and safe.
+### Vector path authoring not independently tested
 
-**Recommendation for future hardening** (not attempted in this pass — would require either sustained
-Figma-side diagnostic access or a purpose-built stress-test harness beyond this pass's scope): consider
-whether `timeoutMs` defaults are too tight for a subset of operations, and whether the bridge/queue layer
-would benefit from an opt-in single-retry-on-timeout policy for idempotent read operations specifically
-(never for mutations, where a blind retry could double-apply a change).
+`custom.design`'s `type:"vector"` node with an explicit `vectorPaths` array is schema+plugin wired
+(ported verbatim from Custom MCP's own `applyIntrinsic`) but was not independently exercised with a real
+custom SVG path this pass. Genuinely narrow scope — not required by any Block A acceptance criterion,
+and not attempted merely to check a box.
 
-## `figma_batch` not yet ported
+### `figma_batch` not ported
 
-Custom MCP's own multi-operation batch/orchestration tool was intentionally not ported this pass.
-Unified's `CommandQueue` already sequences every call through one plugin connection, so the question of
-whether a Unified-level equivalent adds real value (vs. an LLM simply issuing multiple `unified_execute`
-calls in sequence) is open, not decided — flagged in `docs/BLOCK_A_CAPABILITY_MATRIX.md`.
+Unified's own `CommandQueue` already sequences every call through one plugin connection. Whether a
+Unified-level batch-orchestration capability adds real value beyond an LLM issuing multiple
+`unified_execute` calls in sequence is a genuine open design question, not resolved in this pass.
 
-## Large-tree performance not re-measured under real load
+### The test Figma file is on the free Starter plan (3-page limit)
 
-The mini-design test built a genuinely non-trivial tree (a 2-column hero section with nested auto-
-layout, multiple text nodes, a styled button, and a real image), but it's still small (roughly a dozen
-nodes) relative to the 500-1000-node stress scenario the pre-Block-A hardening pass's own performance
-doc flagged as unmeasured. `docs/BLOCK_A_PERFORMANCE.md` remains honest about this — a genuine large-tree
-measurement is deferred, not because it's unimportant, but because building 500+ throwaway nodes purely
-to produce a number would not itself demonstrate anything about real design-construction quality.
+Discovered live during the large-tree scaling investigation (a real `FIGMA_API_ERROR` was hit trying to
+create a 4th page). Not a bug in this codebase — a real environmental constraint of the specific Figma
+file used for all Block A testing. All large-scale testing was consolidated onto one reused page to work
+within it. Worth knowing for anyone reproducing this testing on a similarly-provisioned file.
 
-## Deferred Plumb-family capabilities
+### Bridge orphan-response instrumentation is armed but has not observed a genuine occurrence
 
-`plumb.node.read`, `plumb.tokens`, `plumb.components`, and several other Plumb tools remain unintegrated
-— see `docs/BLOCK_A_CAPABILITY_MATRIX.md` for the complete per-capability status and reasoning. Every
-Plumb capability actually needed for this pass's acceptance tests (`plumb.outline`, `plumb.selection.
-read`, `plumb.status`) was already live since Stage 4 and is confirmed working correctly alongside every
-new Custom-family capability in the mini-design test's cross-family step.
+The timeout-investigation instrumentation added to `src/runtime/unifiedBridge.js` (see
+`docs/BLOCK_A_LIVE_RESULTS.md`) is proven correct in isolated unit tests, but across all live testing
+performed AFTER the font-loading fix — including the 901-node stress test and the full 21-step system
+acceptance run — zero orphan responses were observed. This is good news (no evidence of a genuine
+lost-message problem remains), but it also means the specific "a real response arrived late after a real
+timeout" scenario has only been proven to work correctly in a controlled unit test, not confirmed against
+a real occurrence in production-like conditions. If it recurs, the instrumentation will now capture real
+diagnostic data (`bridge.status().diagnostics`) instead of the previous silent discard.
 
-## Read fidelity for text/component categories under real content
+## Resolved this pass (kept here for the historical record, not deleted)
 
-A1's live verification exercised `geometry`/`layout`/`appearance`/`metadata` categories against a real
-FRAME node, but not `text`/`component`/`variables` categories against a real TEXT/COMPONENT/INSTANCE
-node at the time (no such node existed yet). This gap has since been closed indirectly — the mini-design
-test read back a real TEXT node's `fontFamily`/`fontSize`/`lineHeight`/`characters` successfully — but a
-COMPONENT/INSTANCE-specific full-fidelity read (`variantProperties`, `componentPropertyDefinitions`,
-`mainComponentId` via the async `getMainComponentAsync()` path) was exercised only implicitly (through
-`custom.create_instance`'s own result, not through a dedicated `custom.node.read` call with
-`include:["component"]`) — a narrow remaining gap, not a broad one.
+- ~~Transient response-delivery timeouts, root cause unknown~~ — **Resolved.** Root cause found: `figma.
+  loadFontAsync` per-call latency, uncached, compounding across many text nodes. Fixed with a
+  session-level font cache. See `docs/BLOCK_A_LIVE_RESULTS.md`'s Timeout Investigation section for the
+  full before/after evidence.
+- ~~Large-tree performance not measured~~ — **Resolved.** A real 901-node tree now builds and is fully
+  exercised (reads/measure/diff/verify/idempotency/sync-reconcile) in ~22-90s total across all
+  operations, all real measurements recorded in `docs/BLOCK_A_LIVE_RESULTS.md`/`docs/BLOCK_A_PERFORMANCE.md`.
+- ~~`custom.boolean`/`custom.create_component_set`/`custom.instance_swap`/`custom.styles`/`custom.
+  component_property` schema+plugin wired but not independently live-tested~~ — **Resolved.** All 5
+  real-Figma verified in the gap-closure test run — see `docs/BLOCK_A_LIVE_RESULTS.md`.
+- ~~A11 (Plumb capability completion) not started~~ — **Resolved** to the extent architecturally
+  sensible: `plumb.components` integrated and real-Figma verified; `plumb.node.read`/`plumb.tokens`
+  explicitly and technically justified as deferred (see above), not silently dropped.
