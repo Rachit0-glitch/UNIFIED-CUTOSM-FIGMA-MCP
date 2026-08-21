@@ -5,7 +5,7 @@ deliberate new baseline (a future production-lock pass), never as a routine edit
 
 | Field | Value |
 |---|---|
-| Commit | (filled in after the Production Lock commit — see below) |
+| Commit | `f809d57` — "Production Lock: close mid-flight interruption/resume, freeze architecture ahead of Block C" |
 | Branch | `main` |
 | Protocol version | `1.0` |
 | Plugin version | `0.6.2-blockB-hierarchy-font-errors` (unchanged by Production Lock — no plugin-side code was touched this pass) |
