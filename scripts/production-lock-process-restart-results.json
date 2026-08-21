@@ -1,0 +1,37 @@
+{
+  "steps": [
+    {
+      "step": "process A: plugin paired",
+      "ok": true
+    },
+    {
+      "step": "process A: built a real node to operate on",
+      "ok": true
+    },
+    {
+      "step": "process A: plan paused after patch-a — this run object is the ONLY copy of session state, held by the caller, not the server",
+      "ok": true
+    },
+    {
+      "step": "process A killed (real process exit, not just a disconnect)",
+      "ok": true
+    },
+    {
+      "step": "process B: a genuinely NEW server process paired with the same plugin",
+      "ok": true
+    },
+    {
+      "step": "process B: resuming with the retained run object completes the SAME session (same sessionId) with zero re-execution of patch-a",
+      "ok": true
+    },
+    {
+      "step": "process B: verify confirms the resumed state is correct",
+      "ok": true
+    },
+    {
+      "step": "cleanup",
+      "ok": true
+    }
+  ],
+  "ok": true
+}

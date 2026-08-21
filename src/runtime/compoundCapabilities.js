@@ -159,6 +159,14 @@ async function runMeasure({ payload, bridge, queue }) {
   return { entries: measureAlignment(rectsById, edge, reference) };
 }
 
+// Production Lock §17 — capability registry metadata audit. Every non-compound capability carries a
+// `timeoutMs` enforced as one hard cap around its single bridge round trip (CommandRouter -> CommandQueue
+// -> UnifiedRuntimeBridge). Compound capabilities don't have one bridge call to cap — `runDiff`/
+// `runVerify`/`runMeasure` each make their OWN internal `readNode(..., 15000)` calls (one PER node
+// being read, sequentially — `custom.verify`/`custom.measure` can read several), so no single number
+// bounds the whole operation the way it does elsewhere. `timeoutMs: 15000` below is documented as
+// PER-INTERNAL-READ, matching the literal actually enforced in compoundCapabilities.js's `readNode`
+// calls — present and accurate rather than silently absent, without changing any real behavior.
 export const COMPOUND_CAPABILITIES = Object.freeze([
   {
     id: "custom.diff",
@@ -169,6 +177,7 @@ export const COMPOUND_CAPABILITIES = Object.freeze([
     enabled: true,
     stage: "blockA-a10",
     compound: true,
+    timeoutMs: 15000, // per internal read (up to 1 for a diff against a live nodeId) — see note above
     schema: CustomDiffSchema,
     handler: runDiff
   },
@@ -181,6 +190,7 @@ export const COMPOUND_CAPABILITIES = Object.freeze([
     enabled: true,
     stage: "blockA-a10",
     compound: true,
+    timeoutMs: 15000, // per internal read — verifying N distinct nodeIds makes up to N such reads
     schema: CustomVerifySchema,
     handler: runVerify
   },
@@ -193,6 +203,7 @@ export const COMPOUND_CAPABILITIES = Object.freeze([
     enabled: true,
     stage: "blockA-a10",
     compound: true,
+    timeoutMs: 15000, // per internal read — measuring N nodeIds makes up to N such reads
     schema: CustomMeasureSchema,
     handler: runMeasure
   }

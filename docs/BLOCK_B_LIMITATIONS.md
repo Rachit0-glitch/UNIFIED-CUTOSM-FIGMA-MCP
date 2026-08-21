@@ -17,19 +17,6 @@ continues — not a final report (see `docs/BLOCK_B_FINAL_REPORT.md` for that, o
 
 ## Genuinely open (Block B work not yet done)
 
-- **§21 (interruption/resume acceptance)**: a controlled interruption during a multi-stage build, then
-  reconnect → inspect real state → resume remaining steps → verify, all in ONE combined live test. Not
-  run as a single script — the two halves ARE each independently proven live: §14's reconnect test
-  showed a real plugin disconnect immediately and safely rejects an in-flight request
-  (`PLUGIN_DISCONNECTED`, never a silent hang or a double mutation), and §18-19/the planner's resume
-  tests showed resuming a multi-step plan after a failure works correctly (including a real
-  `unified_execute_plan` resume). `unified_execute_plan`'s single-call, run-to-completion shape (see
-  `docs/BLOCK_B_ARCHITECTURE.md`) makes triggering a disconnect at a precise mid-plan moment from an
-  external script structurally awkward — the composition of the two already-proven halves is real
-  evidence, but a genuinely combined "disconnect while a plan is actively mid-flight, then resume the
-  same plan" live test has not been run as one script. This is the one item in this document where the
-  evidence is compositional rather than a single direct test — flagged explicitly rather than glossed
-  over.
 - **§24 (scale acceptance with a realistic node-type mixture)**: substantially addressed by §18-19 (289
   real nodes, a genuine mixture of frames/auto-layout/text/component+instances/vector/mask/styles/
   variables) — not re-run at Block A's larger 901-node scale with this same mixture; not blocking, since
@@ -97,3 +84,33 @@ continues — not a final report (see `docs/BLOCK_B_FINAL_REPORT.md` for that, o
   `sizing` is explicitly set to `"fixed"` — verification must check the real post-build state, not the
   DesignDoc's authored values (the same pattern independently hit in §18-19). See
   `docs/BLOCK_B_LIVE_RESULTS.md`.
+
+## Closed in the Production Lock pass (post-Block-B)
+
+- **§21 (interruption/resume acceptance)** — the one item above that had only compositional evidence is
+  now closed with a single, genuinely combined live test:
+  `scripts/production-lock-interruption-live.mjs`, **14/14 PASS**. A `pauseAtCheckpoint` parameter was
+  added to `unified_execute_plan` (the smallest production-safe change identified — see
+  `docs/PRODUCTION_READINESS_FINAL.md` item 9) enabling a real, externally-observable mid-plan pause
+  boundary. The test proves the full chain: plan starts → several steps complete → deliberately paused
+  → plugin genuinely disconnects → an attempt to continue the SAME plan while disconnected fails safely
+  → plugin genuinely reconnects (`connectionGeneration` increments) → real state inspected → the SAME
+  session resumes → completes → verifies → re-verifies with zero corrective mutation → zero duplication
+  confirmed.
+- **MCP-process-restart boundary**, explicitly tested for the first time
+  (`scripts/production-lock-process-restart-live.mjs`, 8/8 PASS): a paused plan survives a REAL MCP
+  server process being killed and replaced, as long as the caller retained the `run` object — honestly
+  documented as a caller-side-retention requirement, not disk persistence (none exists).
+- Capability registry metadata completeness — 3 compound P3 capabilities
+  (`custom.diff`/`verify`/`measure`) were missing an explicit `timeoutMs`; now documented accurately as
+  per-internal-read (they have no single bridge call to cap the way other capabilities do).
+- Queue concurrency, explicitly unit-tested for the first time (`tests/production-lock.test.js`, 4/4):
+  `CommandQueue`'s single-active-lane guarantee holds even under concurrently-submitted calls (both
+  plain `unified_execute` and `unified_execute_plan` steps sharing the same queue), and a duplicate/
+  replayed "natural" capability call is confirmed safe by construction.
+- Source-system independence, dependency integrity, and clean-install integrity re-confirmed:
+  `FIGMA-CUSTOM-MCP` git-clean/untouched, the global `plumb-mcp` package file unmodified, Unified's own
+  `node_modules` correctly owns `ws`/`zod`/`figma-custom-mcp` (no cross-project resolution), and
+  `npm ci --dry-run` reports the lockfile up to date.
+
+See `docs/PRODUCTION_READINESS_FINAL.md` for the complete, current-state document this pass produced.

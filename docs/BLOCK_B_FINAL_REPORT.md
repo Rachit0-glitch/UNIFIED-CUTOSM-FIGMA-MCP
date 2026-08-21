@@ -1,10 +1,17 @@
 # Block B Final Report
 
+**Update (Production Lock pass, post-Block-B)**: item 21's remaining limitation (a single combined
+mid-flight plan interruption + resume live test) has since been closed — see
+`docs/PRODUCTION_READINESS_FINAL.md` item 9 and `scripts/production-lock-interruption-live.mjs` (14/14
+PASS). The verdict below is left as originally written for the historical record; nothing in it needs
+retracting, only this addendum.
+
 ## 1. Status
 
-**BLOCK B: PASS**, with one explicitly documented, non-blocking limitation (item 21 below). No
-requirement was lowered to obtain this verdict — where evidence was incomplete, it is stated exactly as
-such rather than glossed over (see `docs/BLOCK_B_LIMITATIONS.md`, the living record kept throughout).
+**BLOCK B: PASS**, with one explicitly documented, non-blocking limitation (item 21 below, since closed
+— see the update note above). No requirement was lowered to obtain this verdict — where evidence was
+incomplete, it is stated exactly as such rather than glossed over (see `docs/BLOCK_B_LIMITATIONS.md`,
+the living record kept throughout).
 
 ## 2. Production readiness
 

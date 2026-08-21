@@ -1,0 +1,74 @@
+{
+  "steps": [
+    {
+      "step": "pair",
+      "ok": true,
+      "initialGeneration": 1
+    },
+    {
+      "step": "setup: wrapper + 3 children built",
+      "ok": true
+    },
+    {
+      "step": "PLAN STARTS + PAUSES: patch-a succeeded, patch-b/patch-c/final-read genuinely paused (not executed)",
+      "ok": true,
+      "sessionId": "86408a26-7bac-44be-ac13-37176fb80819"
+    },
+    {
+      "step": "PLUGIN GENUINELY DISCONNECTS",
+      "ok": true,
+      "connectionGenerationAtDisconnect": 1
+    },
+    {
+      "step": "ATTEMPT DURING DISCONNECT resolves safely — PLUGIN_DISCONNECTED, never a hang or a silent mutation",
+      "ok": true,
+      "patchBStatus": "failed",
+      "patchBErrorCode": "PLUGIN_DISCONNECTED"
+    },
+    {
+      "step": "MCP process stayed alive through the disconnect (this same client connection is still responding)",
+      "ok": true
+    },
+    {
+      "step": "PLUGIN GENUINELY RECONNECTS — connectionGeneration increments",
+      "ok": true,
+      "previousGeneration": 1,
+      "newGeneration": 2
+    },
+    {
+      "step": "INSPECT STATE: patch-a's effect (opacity 0.5) is real; patch-b/c have NOT been applied (still opacity 1); no duplication (still exactly 3 children)",
+      "ok": true,
+      "childrenCount": 3,
+      "aOpacity": 0.5,
+      "bOpacity": 1
+    },
+    {
+      "step": "RESUME completes the SAME session — same sessionId throughout pause -> disconnect-attempt -> resume",
+      "ok": true,
+      "resumedSessionId": "86408a26-7bac-44be-ac13-37176fb80819",
+      "originalSessionId": "86408a26-7bac-44be-ac13-37176fb80819"
+    },
+    {
+      "step": "RESUME: all remaining steps (patch-b, patch-c, final-read) now succeeded",
+      "ok": true
+    },
+    {
+      "step": "VERIFY: all 3 children match the fully-resumed expected state",
+      "ok": true
+    },
+    {
+      "step": "VERIFY AGAIN: zero corrective mutation needed (stable, no drift)",
+      "ok": true
+    },
+    {
+      "step": "ZERO DUPLICATION: wrapper still has exactly 3 children (no duplicate nodes/components/styles/variables created by the interruption+resume cycle)",
+      "ok": true,
+      "finalChildCount": 3
+    },
+    {
+      "step": "CLEANUP",
+      "ok": true
+    }
+  ],
+  "ok": true
+}

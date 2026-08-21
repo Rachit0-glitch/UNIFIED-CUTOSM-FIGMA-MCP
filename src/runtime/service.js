@@ -48,7 +48,7 @@ export class UnifiedRuntimeService {
   // any step executes: an invalid plan (unknown capability, bad dependency, a cycle) is reported as
   // `executed:false` with the exact problems, never partially run. `previousRun` (the exact object a
   // prior call's `run` field returned) resumes without re-executing already-succeeded steps.
-  async executePlan({ steps, planId, previousRun, stopOnFailure } = {}) {
+  async executePlan({ steps, planId, previousRun, stopOnFailure, pauseAtCheckpoint } = {}) {
     return await this.logger.timed("unified_execute_plan", "unified-runtime", async () => {
       let plan;
       try {
@@ -60,7 +60,7 @@ export class UnifiedRuntimeService {
       if (!preflight.ok) {
         return { ok: false, executed: false, plan, preflight };
       }
-      const run = await runExecutionPlan(plan, this.router, { previousRun, stopOnFailure });
+      const run = await runExecutionPlan(plan, this.router, { previousRun, stopOnFailure, pauseAtCheckpoint });
       return { ok: run.ok, executed: true, plan, preflight, run };
     });
   }

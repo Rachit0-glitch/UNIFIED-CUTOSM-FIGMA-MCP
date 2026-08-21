@@ -214,3 +214,48 @@ test("resumePlan: carries forward reachedCheckpoints from the previous run", asy
   const run2 = await resumePlan(plan, router2, run1);
   assert.deepEqual(run2.reachedCheckpoints.sort(), ["structure", "styling"]);
 });
+
+// Production-lock hardening — pauseAtCheckpoint: a deliberate, externally-observable mid-plan pause
+// boundary, distinct from a failure, that a caller can resume from without re-executing anything.
+
+test("executePlan: pauseAtCheckpoint stops right after that checkpoint's step succeeds, marking remaining steps 'paused' (not 'blocked' or 'failed')", async () => {
+  const plan = buildPlan(
+    [
+      { id: "a", capability: "custom.design", payload: {}, checkpoint: "structure" },
+      { id: "b", capability: "custom.patch_node", payload: {}, dependsOn: ["a"] },
+      { id: "c", capability: "custom.patch_node", payload: {}, dependsOn: ["b"] }
+    ],
+    { registry: registry() }
+  );
+  const router = fakeRouter([{ ok: true }]); // only "a" should ever be sent
+  const run = await executePlan(plan, router, { pauseAtCheckpoint: "structure" });
+  assert.equal(router.calls.length, 1, "execution must stop immediately after the paused checkpoint — b/c never sent to the router");
+  assert.equal(run.results.find((r) => r.stepId === "a").status, "succeeded");
+  assert.equal(run.results.find((r) => r.stepId === "b").status, "paused");
+  assert.equal(run.results.find((r) => r.stepId === "c").status, "paused");
+  assert.equal(run.paused, true);
+  assert.equal(run.ok, false, "a paused run is not yet complete");
+});
+
+test("executePlan+resumePlan: a paused plan resumes and completes normally, continuing the SAME sessionId, with paused steps re-attempted (not skipped, unlike 'succeeded' steps)", async () => {
+  const plan = buildPlan(
+    [
+      { id: "a", capability: "custom.design", payload: {}, checkpoint: "structure" },
+      { id: "b", capability: "custom.patch_node", payload: {} }
+    ],
+    { registry: registry() }
+  );
+  const router1 = fakeRouter([{ ok: true }]);
+  const paused = await executePlan(plan, router1, { pauseAtCheckpoint: "structure" });
+  assert.equal(paused.paused, true);
+
+  const router2 = fakeRouter([{ ok: true }]); // step "b" (previously "paused", never attempted) must be sent now
+  const resumed = await resumePlan(plan, router2, paused);
+  assert.equal(router2.calls.length, 1);
+  assert.equal(router2.calls[0].capability, "custom.patch_node");
+  assert.equal(resumed.results.find((r) => r.stepId === "a").status, "succeeded", "step a is carried forward, not re-executed");
+  assert.equal(resumed.results.find((r) => r.stepId === "b").status, "succeeded");
+  assert.equal(resumed.paused, false);
+  assert.equal(resumed.ok, true);
+  assert.equal(resumed.sessionId, paused.sessionId, "resuming a paused plan continues the SAME logical session");
+});

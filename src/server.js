@@ -123,7 +123,7 @@ export function createTools(coordinator, env = process.env) {
     // `previousRun` to resume a plan without re-executing steps that already succeeded.
     unified_execute_plan: {
       name: "unified_execute_plan",
-      description: "Execute an ordered, already-decided list of capability steps (each { capability, payload, dependsOn?, checkpoint?, id? }) through the same production Unified Figma plugin runtime as unified_execute, with dependency ordering, checkpoint tracking, and resumability. Preflights the plan (unknown capability, bad dependency, dependency cycle) before executing anything. Pass a prior call's `run` field back as `previousRun` to resume without re-running already-succeeded steps.",
+      description: "Execute an ordered, already-decided list of capability steps (each { capability, payload, dependsOn?, checkpoint?, id? }) through the same production Unified Figma plugin runtime as unified_execute, with dependency ordering, checkpoint tracking, and resumability. Preflights the plan (unknown capability, bad dependency, dependency cycle) before executing anything. Pass a prior call's `run` field back as `previousRun` to resume without re-running already-succeeded steps. Pass `pauseAtCheckpoint` to deliberately stop execution right after that checkpoint is reached (steps beyond it come back with status \"paused\", not a failure) — useful to create a safe, externally-visible pause boundary before something external happens (e.g. a plugin reconnect), then resume the same session by calling again with `previousRun` set and no `pauseAtCheckpoint`.",
       inputSchema: {
         type: "object",
         properties: {
@@ -146,7 +146,8 @@ export function createTools(coordinator, env = process.env) {
           },
           planId: { type: "string" },
           previousRun: { type: "object" },
-          stopOnFailure: { type: "boolean" }
+          stopOnFailure: { type: "boolean" },
+          pauseAtCheckpoint: { type: "string" }
         },
         required: ["steps"],
         additionalProperties: false

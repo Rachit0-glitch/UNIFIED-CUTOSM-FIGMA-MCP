@@ -89,6 +89,24 @@ Full detail: `docs/BLOCK_B_ARCHITECTURE.md`, `docs/BLOCK_B_OPERATION_MODEL.md`,
 `docs/BLOCK_B_BATCH_DECISION.md`, `docs/BLOCK_B_PERFORMANCE.md`, `docs/BLOCK_B_FAILURE_TESTS.md`,
 `docs/BLOCK_B_LIVE_RESULTS.md`, `docs/BLOCK_B_LIMITATIONS.md`, `docs/BLOCK_B_FINAL_REPORT.md`.
 
+## Production Lock Status
+
+**SYSTEM PRODUCTION LOCK: PASS.** A final hardening pass closing Block B's one remaining limitation and
+freezing the architecture ahead of Block C (not started). Adds `pauseAtCheckpoint` to
+`unified_execute_plan` — a deliberate, externally-observable mid-plan pause boundary — and uses it to
+prove, live, the full mid-flight interruption + resume chain: plan starts → pauses → plugin genuinely
+disconnects → a same-plan continuation attempt fails safely → plugin reconnects → the SAME session
+resumes → completes → verifies twice with zero corrective mutation (14/14,
+`scripts/production-lock-interruption-live.mjs`). Also proves the MCP-process-restart boundary
+explicitly (8/8, `scripts/production-lock-process-restart-live.mjs`): a paused plan survives a real
+server-process restart as long as the caller retained the returned `run` object — no disk persistence
+exists, stated honestly rather than assumed. Re-audited queue concurrency (no race can bypass
+`CommandQueue`'s single-active-lane guarantee), capability registry metadata (found and fixed 3 missing
+`timeoutMs` fields), and source-system/dependency independence. 146/146 tests passing.
+
+Full detail: `docs/PRODUCTION_READINESS_FINAL.md` (the complete current-state reference) and
+`docs/PRODUCTION_BASELINE.md` (the concise baseline record).
+
 ## Pre-Block-A Hardening Status
 
 **UNIFIED MCP STATUS: READY FOR BLOCK A.** Before Block A capability integration begins, this pass

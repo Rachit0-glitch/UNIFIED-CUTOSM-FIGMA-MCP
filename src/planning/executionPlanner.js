@@ -124,8 +124,20 @@ function topologicalOrder(steps) {
  * record from THIS SAME plan — any step whose id already has status "succeeded" there is skipped
  * (Block B §9 checkpoints / §21 interruption-resume), never re-run. A step whose dependency did not
  * succeed is marked "blocked" and never attempted (never silently skipped without a trace).
+ *
+ * Production-lock hardening — `pauseAtCheckpoint` (optional): after the step that reaches this
+ * checkpoint succeeds, execution stops deliberately (not a failure) and every remaining step is marked
+ * `status: "paused"` — distinct from "blocked" (a dependency failure) so a caller can tell "this just
+ * hasn't run yet" from "this can't run." This is the smallest change needed to make a genuine,
+ * externally-observable mid-flight interruption possible: a caller can pause a plan at a known
+ * boundary, let something happen externally (e.g. the Unified Runtime plugin disconnects and
+ * reconnects), then call `resumePlan`/`executePlan` again with `previousRun` set — paused steps are
+ * NOT skipped on resume (only "succeeded" ones are), so they execute normally, continuing the SAME
+ * `sessionId`. No new persistence subsystem — this is still purely in-memory, single-process state,
+ * exactly like the rest of the planner (see docs/PRODUCTION_READINESS_FINAL.md's interruption/resume
+ * section for why process-level persistence is/isn't needed).
  */
-export async function executePlan(plan, router, { previousRun = null, stopOnFailure = true } = {}) {
+export async function executePlan(plan, router, { previousRun = null, stopOnFailure = true, pauseAtCheckpoint = null } = {}) {
   const sessionId = previousRun?.sessionId ?? randomUUID();
   const startedAt = new Date().toISOString();
   const priorById = new Map((previousRun?.results ?? []).map((r) => [r.stepId, r]));
@@ -133,12 +145,20 @@ export async function executePlan(plan, router, { previousRun = null, stopOnFail
   const reachedCheckpoints = new Set(previousRun?.reachedCheckpoints ?? []);
   const order = topologicalOrder(plan.steps);
   let halted = false;
+  let paused = false;
 
   for (const step of order) {
     const prior = priorById.get(step.id);
     if (prior && prior.status === "succeeded") {
       results.push(prior); // resumed — not re-executed
       if (step.checkpoint) reachedCheckpoints.add(step.checkpoint);
+      continue;
+    }
+    // Checked BEFORE dependency status: once paused, every remaining step — including ones whose
+    // dependency is itself only "paused" (not failed) — is uniformly "paused", never "blocked". A
+    // paused dependency is not a FAILED dependency; downstream steps just haven't had their turn yet.
+    if (paused) {
+      results.push({ stepId: step.id, status: "paused", capability: step.capability, reason: `execution deliberately paused at checkpoint "${pauseAtCheckpoint}" — not a failure, resume with previousRun set` });
       continue;
     }
     const depsOk = step.dependsOn.every((dep) => {
@@ -178,24 +198,30 @@ export async function executePlan(plan, router, { previousRun = null, stopOnFail
       result: routerResult.ok ? routerResult.result : null,
       error: routerResult.ok ? null : routerResult.error
     });
-    if (routerResult.ok && step.checkpoint) reachedCheckpoints.add(step.checkpoint);
+    if (routerResult.ok && step.checkpoint) {
+      reachedCheckpoints.add(step.checkpoint);
+      if (pauseAtCheckpoint && step.checkpoint === pauseAtCheckpoint) paused = true;
+    }
     if (!routerResult.ok && stopOnFailure) halted = true;
   }
 
   const succeeded = results.filter((r) => r.status === "succeeded").length;
   const failed = results.filter((r) => r.status === "failed" || r.status === "timed_out").length;
   const blocked = results.filter((r) => r.status === "blocked").length;
+  const pausedCount = results.filter((r) => r.status === "paused").length;
 
   return {
     sessionId,
     planId: plan.planId,
     startedAt,
     completedAt: new Date().toISOString(),
-    ok: failed === 0 && blocked === 0,
+    ok: failed === 0 && blocked === 0 && pausedCount === 0,
+    paused: pausedCount > 0,
     totalSteps: plan.steps.length,
     succeeded,
     failed,
     blocked,
+    pausedCount,
     reachedCheckpoints: [...reachedCheckpoints],
     results,
     // Block B §8 — the fields a design-execution session must be able to answer "what did this run

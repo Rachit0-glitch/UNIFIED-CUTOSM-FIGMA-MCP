@@ -15,6 +15,12 @@ already-decided list of these same capability steps, executed through the same `
 dependency ordering, checkpoints, and resumability. It is not a new capability, just a second way to
 invoke the ones listed here. See `docs/BLOCK_B_ARCHITECTURE.md`.
 
+**Production Lock**: `unified_execute_plan` also accepts an optional `pauseAtCheckpoint` — execution
+stops deliberately right after that checkpoint's step succeeds (status `"paused"` on the remaining
+steps, not a failure), giving a real, externally-observable boundary to resume from later via
+`previousRun`. Live-proven against a genuine plugin disconnect/reconnect cycle:
+`scripts/production-lock-interruption-live.mjs`. See `docs/PRODUCTION_READINESS_FINAL.md` item 9.
+
 ## Supported Capabilities
 
 | Capability | Family | Operation | Mutation | Notes |
