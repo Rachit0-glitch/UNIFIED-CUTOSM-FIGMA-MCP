@@ -16,9 +16,8 @@ Runtime plugin established in Block A, zero manual plugin switching, zero archit
 
 ## 3. Commit hash
 
-Not yet committed at the time this report was written — commit happens immediately after this report,
-per the standing instruction to commit only after final regression succeeds (item 26 confirms that gate
-passed: 140/140 tests, `npm run check` clean).
+`42c990f` — "Block B: production-hardening layer (operation model, planner, reconciliation, batch
+decision, security fix) — PASS".
 
 ## 4. Branch
 
