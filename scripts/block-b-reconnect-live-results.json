@@ -1,0 +1,39 @@
+{
+  "steps": [
+    {
+      "step": "initial pairing",
+      "ok": true,
+      "connectionGeneration": 1
+    },
+    {
+      "step": "pre-restart: built 2 differently-weighted text nodes (warms font cache)",
+      "ok": true,
+      "elapsedMs": 93
+    },
+    {
+      "step": "observed a REAL disconnect (plugin closed)",
+      "ok": true,
+      "connectedAt": null
+    },
+    {
+      "step": "observed a REAL reconnect with connectionGeneration incremented",
+      "ok": true,
+      "initialGeneration": 1,
+      "newGeneration": 2
+    },
+    {
+      "step": "post-reconnect: queue is clean (not stuck from before restart)",
+      "ok": true
+    },
+    {
+      "step": "post-reconnect: can still read the pre-restart-created nodes (same Figma document, new plugin runtime)",
+      "ok": true
+    },
+    {
+      "step": "post-reconnect: font resolution works cleanly on the new plugin runtime (cache correctly reset, not stale)",
+      "ok": false,
+      "elapsedMs": 3
+    }
+  ],
+  "ok": false
+}

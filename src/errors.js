@@ -26,7 +26,16 @@ export const ERROR_CODES = Object.freeze({
   // Block A / A2 — specific mutation-path error codes (brief §18: never respond to a meaningful
   // Figma failure with a generic message when specific context exists).
   NODE_NOT_FOUND: "NODE_NOT_FOUND",
-  DESIGN_COMPILE_ERROR: "DESIGN_COMPILE_ERROR"
+  DESIGN_COMPILE_ERROR: "DESIGN_COMPILE_ERROR",
+  // Block B — the remaining genuinely new error categories §17 asks for. Existing codes already cover
+  // most of §17's taxonomy under different names (see docs/BLOCK_B_OPERATION_MODEL.md for the exact
+  // mapping: INVALID_PAYLOAD = VALIDATION_ERROR, NODE_NOT_FOUND = TARGET_NOT_FOUND, INVALID_COMMAND =
+  // UNSUPPORTED_OPERATION) — those are NOT duplicated here, since two codes for one failure class would
+  // itself be a taxonomy defect. Only the categories with no existing equivalent are added.
+  INVALID_HIERARCHY: "INVALID_HIERARCHY",
+  FONT_ERROR: "FONT_ERROR",
+  RECONCILIATION_FAILED: "RECONCILIATION_FAILED",
+  VERIFICATION_FAILED: "VERIFICATION_FAILED"
 });
 
 export class UnifiedError extends Error {

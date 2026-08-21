@@ -69,6 +69,26 @@ zero orphan responses). `plumb.node.read`/`plumb.tokens` are explicitly deferred
 justification, not silently missing — see `docs/BLOCK_A_SOURCE_PARITY.md`. Full capability inventory:
 `docs/BLOCK_A_CAPABILITY_MATRIX.md`. Real-Figma test evidence: `docs/BLOCK_A_LIVE_RESULTS.md`.
 
+## Block B Status
+
+Block B turns Block A's execution substrate into a production-hardened design execution engine — no
+new capabilities, no architecture changes, purely reliability/operability additions on top of the same
+one-plugin path. Adds: an operation model (`operationRecord` on every `unified_execute` response —
+operation id, retry-safety classification, status, payload fingerprint), a reconciliation decision
+engine (`src/runtime/reconciliation.js`) that recommends — never auto-performs — the safe retry action
+for an ambiguous failure, an execution planner reachable via a new **`unified_execute_plan`** tool
+(ordered steps, dependency ordering, checkpoints, resumability), two new error codes
+(`INVALID_HIERARCHY`, `FONT_ERROR`), connection-generation tracking for real plugin reconnects, and an
+iterative payload-shape guard closing a real stack-overflow vulnerability in recursive schema
+validation. The production tool set is now `unified_capabilities`, `unified_execute`,
+**`unified_execute_plan`**, `unified_runtime_status` (the 4 legacy diagnostic tools remain unchanged,
+still opt-in only).
+
+Full detail: `docs/BLOCK_B_ARCHITECTURE.md`, `docs/BLOCK_B_OPERATION_MODEL.md`,
+`docs/BLOCK_B_ROUTING_POLICY.md`, `docs/BLOCK_B_RETRY_RECONCILIATION.md`,
+`docs/BLOCK_B_BATCH_DECISION.md`, `docs/BLOCK_B_PERFORMANCE.md`, `docs/BLOCK_B_FAILURE_TESTS.md`,
+`docs/BLOCK_B_LIVE_RESULTS.md`, `docs/BLOCK_B_LIMITATIONS.md`, `docs/BLOCK_B_FINAL_REPORT.md`.
+
 ## Pre-Block-A Hardening Status
 
 **UNIFIED MCP STATUS: READY FOR BLOCK A.** Before Block A capability integration begins, this pass

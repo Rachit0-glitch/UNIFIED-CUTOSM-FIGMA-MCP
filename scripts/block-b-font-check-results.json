@@ -1,0 +1,15 @@
+{
+  "steps": [
+    {
+      "step": "pair",
+      "ok": true,
+      "connectionGeneration": 1
+    },
+    {
+      "step": "font resolution works cleanly on the current (post-reconnect) plugin runtime",
+      "ok": true,
+      "elapsedMs": 106
+    }
+  ],
+  "ok": true
+}

@@ -116,6 +116,49 @@ export function createTools(coordinator, env = process.env) {
         }
       }
     },
+    // Block B §6/§8/§9/§21 — the execution planner's only MCP entry point. The caller (the LLM) has
+    // already decided the ordered steps; this validates them (preflight, before anything runs), then
+    // executes them through the same real CommandRouter unified_execute uses, tracking checkpoints and
+    // per-step operationRecords. Pass back the exact `run` object a prior call returned as
+    // `previousRun` to resume a plan without re-executing steps that already succeeded.
+    unified_execute_plan: {
+      name: "unified_execute_plan",
+      description: "Execute an ordered, already-decided list of capability steps (each { capability, payload, dependsOn?, checkpoint?, id? }) through the same production Unified Figma plugin runtime as unified_execute, with dependency ordering, checkpoint tracking, and resumability. Preflights the plan (unknown capability, bad dependency, dependency cycle) before executing anything. Pass a prior call's `run` field back as `previousRun` to resume without re-running already-succeeded steps.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          steps: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                id: { type: "string" },
+                capability: { type: "string" },
+                payload: { type: "object" },
+                dependsOn: { type: "array", items: { type: "string" } },
+                checkpoint: { type: "string" },
+                expectedPostcondition: { type: "string" }
+              },
+              required: ["capability"],
+              additionalProperties: false
+            },
+            minItems: 1
+          },
+          planId: { type: "string" },
+          previousRun: { type: "object" },
+          stopOnFailure: { type: "boolean" }
+        },
+        required: ["steps"],
+        additionalProperties: false
+      },
+      handler: async (args) => {
+        try {
+          return textResult(await coordinator.runtime.executePlan(args));
+        } catch (error) {
+          return textResult({ ok: false, executed: false, error: errorShape(error) });
+        }
+      }
+    },
     // H15 — the production-safe status/health capability. Reports only the single Unified runtime
     // (bridge/plugin/protocol/queue) — never spawns or requires the original Plumb/Custom processes.
     unified_runtime_status: {

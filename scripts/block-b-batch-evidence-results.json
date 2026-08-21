@@ -1,0 +1,138 @@
+{
+  "steps": [
+    {
+      "step": "pair",
+      "ok": true,
+      "pluginVersion": "0.6.2-blockB-hierarchy-font-errors"
+    },
+    {
+      "step": "bulk-create 20 nodes via custom.design (1 call)",
+      "ok": true,
+      "elapsedMs": 232,
+      "msPerNode": 11.6
+    },
+    {
+      "step": "20 sequential patch_node mutations",
+      "ok": true,
+      "totalMs": 101,
+      "avgMsPerOp": 5.05,
+      "minMs": 3,
+      "maxMs": 17
+    },
+    {
+      "step": "20 CONCURRENT patch_node mutations via Promise.all",
+      "ok": true,
+      "totalMs": 62,
+      "note": "if concTotal is close to seqTotal, CommandQueue's single-active-lane already serializes everything server-side — a batch primitive could not meaningfully speed this up, only reduce the small local MCP round-trip count."
+    }
+  ],
+  "perOpMs": [
+    {
+      "i": 0,
+      "elapsed": 17,
+      "ok": true
+    },
+    {
+      "i": 1,
+      "elapsed": 7,
+      "ok": true
+    },
+    {
+      "i": 2,
+      "elapsed": 5,
+      "ok": true
+    },
+    {
+      "i": 3,
+      "elapsed": 5,
+      "ok": true
+    },
+    {
+      "i": 4,
+      "elapsed": 5,
+      "ok": true
+    },
+    {
+      "i": 5,
+      "elapsed": 5,
+      "ok": true
+    },
+    {
+      "i": 6,
+      "elapsed": 5,
+      "ok": true
+    },
+    {
+      "i": 7,
+      "elapsed": 5,
+      "ok": true
+    },
+    {
+      "i": 8,
+      "elapsed": 5,
+      "ok": true
+    },
+    {
+      "i": 9,
+      "elapsed": 4,
+      "ok": true
+    },
+    {
+      "i": 10,
+      "elapsed": 3,
+      "ok": true
+    },
+    {
+      "i": 11,
+      "elapsed": 4,
+      "ok": true
+    },
+    {
+      "i": 12,
+      "elapsed": 4,
+      "ok": true
+    },
+    {
+      "i": 13,
+      "elapsed": 4,
+      "ok": true
+    },
+    {
+      "i": 14,
+      "elapsed": 4,
+      "ok": true
+    },
+    {
+      "i": 15,
+      "elapsed": 3,
+      "ok": true
+    },
+    {
+      "i": 16,
+      "elapsed": 4,
+      "ok": true
+    },
+    {
+      "i": 17,
+      "elapsed": 4,
+      "ok": true
+    },
+    {
+      "i": 18,
+      "elapsed": 3,
+      "ok": true
+    },
+    {
+      "i": 19,
+      "elapsed": 5,
+      "ok": true
+    }
+  ],
+  "comparison": {
+    "sequentialTotalMs": 101,
+    "concurrentTotalMs": 62,
+    "ratio": 0.614,
+    "interpretation": "concurrent submission was meaningfully faster — some real per-call overhead exists outside the queue"
+  },
+  "ok": true
+}

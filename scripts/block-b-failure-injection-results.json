@@ -1,0 +1,94 @@
+{
+  "steps": [
+    {
+      "step": "pair",
+      "ok": true,
+      "pluginVersion": "0.6.1-blockA-font-cache-fix"
+    },
+    {
+      "step": "plugin version reflects Block B error-taxonomy wiring",
+      "ok": false,
+      "expected": "0.6.2-blockB-hierarchy-font-errors",
+      "actual": "0.6.1-blockA-font-cache-fix"
+    },
+    {
+      "step": "invalid node ID -> NODE_NOT_FOUND",
+      "ok": true,
+      "expectedCode": "NODE_NOT_FOUND",
+      "actualCode": "NODE_NOT_FOUND",
+      "message": "Node not found: 9999:9999"
+    },
+    {
+      "step": "deleted target -> NODE_NOT_FOUND",
+      "ok": true,
+      "expectedCode": "NODE_NOT_FOUND",
+      "actualCode": "NODE_NOT_FOUND",
+      "message": "Node not found: 24:5428"
+    },
+    {
+      "step": "invalid (nonexistent) parent -> NODE_NOT_FOUND",
+      "ok": true,
+      "expectedCode": "NODE_NOT_FOUND",
+      "actualCode": "NODE_NOT_FOUND",
+      "message": "Parent not found: 9999:8888"
+    },
+    {
+      "step": "hierarchy cycle (move ancestor into its own descendant) -> INVALID_HIERARCHY (Block B new)",
+      "ok": true,
+      "expectedCode": "INVALID_HIERARCHY",
+      "actualCode": "INVALID_HIERARCHY",
+      "message": "custom.move_node: cannot move node 24:5429 into 24:5430 — the target parent is the node itself or one of its own descendants, which would create a hierarchy cycle."
+    },
+    {
+      "step": "move node into itself -> INVALID_HIERARCHY (Block B new)",
+      "ok": true,
+      "expectedCode": "INVALID_HIERARCHY",
+      "actualCode": "INVALID_HIERARCHY",
+      "message": "custom.move_node: cannot move node 24:5430 into 24:5430 — the target parent is the node itself or one of its own descendants, which would create a hierarchy cycle."
+    },
+    {
+      "step": "unsupported capability -> CAPABILITY_NOT_FOUND",
+      "ok": true,
+      "expectedCode": "CAPABILITY_NOT_FOUND",
+      "actualCode": "CAPABILITY_NOT_FOUND",
+      "message": "Capability not found: custom.does_not_exist."
+    },
+    {
+      "step": "malformed payload (missing nodeId) -> INVALID_PAYLOAD",
+      "ok": true,
+      "expectedCode": "INVALID_PAYLOAD",
+      "actualCode": "INVALID_PAYLOAD",
+      "message": "custom.patch_node: nodeId: Required"
+    },
+    {
+      "step": "patch characters on a mixed-font text node -> FONT_ERROR (Block B new)",
+      "ok": true,
+      "expectedCode": "FONT_ERROR",
+      "actualCode": "FONT_ERROR",
+      "message": "custom.patch_node: text node 24:5432 has mixed fonts across its characters — patching \"text.characters\" without also patching \"text.font\" is only supported on single-font text nodes."
+    },
+    {
+      "step": "custom.verify against a deliberately wrong expectation returns a structured mismatch (not a crash)",
+      "ok": true,
+      "differences": [
+        {
+          "id": "24:5429",
+          "field": "width",
+          "expected": 999999,
+          "actual": 200,
+          "delta": -999799,
+          "severity": "MAJOR"
+        },
+        {
+          "id": "24:5429",
+          "field": "height",
+          "expected": 999999,
+          "actual": 200,
+          "delta": -999799,
+          "severity": "MAJOR"
+        }
+      ]
+    }
+  ],
+  "ok": false
+}

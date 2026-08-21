@@ -181,3 +181,47 @@ test("runtime acceptance sequence uses one queue in Plumb Custom Plumb order", a
   assert.deepEqual(result.sequence.map((step) => step.family), ["plumb", "custom", "plumb"]);
   assert.deepEqual(bridge.calls.map((envelope) => `${envelope.family}.${envelope.operation}`), ["plumb.outline", "custom.node.read", "plumb.outline"]);
 });
+
+// Block B §6/§8/§9/§21 — unified_execute_plan's service-level wiring, end-to-end through the REAL
+// CommandRouter/CapabilityRegistry (only the bridge is faked), proving the planner isn't just
+// unit-tested in isolation (tests/execution-planner.test.js's fakeRouter) but actually reachable and
+// correct through the same production router unified_execute itself uses.
+
+test("service.executePlan: a valid 2-step plan (plumb.outline -> custom.node.read) executes in order through the real router", async () => {
+  const { bridge, service } = createFixture();
+  const result = await service.executePlan({
+    steps: [
+      { id: "a", capability: "plumb.outline", payload: {} },
+      { id: "b", capability: "custom.node.read", payload: { depth: 1 }, dependsOn: ["a"] }
+    ]
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.executed, true);
+  assert.equal(result.preflight.ok, true);
+  assert.equal(result.run.succeeded, 2);
+  assert.deepEqual(bridge.calls.map((e) => `${e.family}.${e.operation}`), ["plumb.outline", "custom.node.read"]);
+});
+
+test("service.executePlan: an unknown capability is caught at preflight and NOTHING is sent to the bridge", async () => {
+  const { bridge, service } = createFixture();
+  const result = await service.executePlan({ steps: [{ id: "a", capability: "custom.does_not_exist", payload: {} }] });
+  assert.equal(result.ok, false);
+  assert.equal(result.executed, false);
+  assert.equal(result.preflight.ok, false);
+  assert.equal(result.preflight.problems[0].code, "CAPABILITY_NOT_FOUND");
+  assert.equal(bridge.calls.length, 0);
+});
+
+test("service.executePlan: resuming with a prior run's exact result does not re-send an already-succeeded step to the bridge", async () => {
+  const { bridge, service } = createFixture();
+  const first = await service.executePlan({ steps: [{ id: "a", capability: "plumb.outline", payload: {} }, { id: "b", capability: "custom.node.read", payload: { depth: 1 } }] });
+  assert.equal(bridge.calls.length, 2);
+
+  const second = await service.executePlan({
+    steps: [{ id: "a", capability: "plumb.outline", payload: {} }, { id: "b", capability: "custom.node.read", payload: { depth: 1 } }],
+    previousRun: first.run
+  });
+  assert.equal(second.ok, true);
+  assert.equal(bridge.calls.length, 2, "resuming an already-fully-succeeded plan must not re-send any step to the bridge");
+  assert.equal(second.run.sessionId, first.run.sessionId);
+});

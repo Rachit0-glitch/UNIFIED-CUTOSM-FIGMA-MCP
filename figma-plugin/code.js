@@ -1,7 +1,7 @@
 figma.showUI(__html__, { width: 300, height: 190, title: "Unified Runtime" });
 
 const PROTOCOL_VERSION = "1.0";
-const PLUGIN_VERSION = "0.6.1-blockA-font-cache-fix";
+const PLUGIN_VERSION = "0.6.2-blockB-hierarchy-font-errors";
 
 function pluginError(code, message, details) {
   return { code, message, ...(details ? { details } : {}) };
@@ -384,7 +384,7 @@ async function resolveFont(family, weight) {
         /* try next */
       }
     }
-    throw new Error(`No usable font found (tried "${wanted.family} ${wanted.style}" and fallbacks).`);
+    throw pluginError("FONT_ERROR", `No usable font found (tried "${wanted.family} ${wanted.style}" and fallbacks).`, { family: wanted.family, style: wanted.style });
   }
 }
 
@@ -915,7 +915,7 @@ async function handlePatchNode(args) {
     if (p.text.characters !== undefined) {
       if (!p.text.font) {
         if (node.fontName === figma.mixed) {
-          throw new Error(`custom.patch_node: text node ${node.id} has mixed fonts across its characters — patching "text.characters" without also patching "text.font" is only supported on single-font text nodes.`);
+          throw pluginError("FONT_ERROR", `custom.patch_node: text node ${node.id} has mixed fonts across its characters — patching "text.characters" without also patching "text.font" is only supported on single-font text nodes.`, { nodeId: node.id });
         }
         await figma.loadFontAsync(node.fontName);
       }
@@ -1343,6 +1343,12 @@ async function handleMoveNode(args) {
   const newParent = await figma.getNodeByIdAsync(args.parentId);
   if (!newParent) throw pluginError("NODE_NOT_FOUND", `Parent not found: ${args.parentId}`, { nodeId: args.parentId });
   if (!("appendChild" in newParent)) throw new Error(`custom.move_node: target "${args.parentId}" (type "${newParent.type}") cannot contain children.`);
+  // Block B §15/§17 — Figma's own appendChild/insertChild would eventually reject this, but only with
+  // a raw platform error carrying no .code (normalized down to a generic FIGMA_API_ERROR). Detecting it
+  // here up front gives the caller a precise, actionable INVALID_HIERARCHY instead.
+  if (newParent.id === node.id || isDescendantOf(newParent, node)) {
+    throw pluginError("INVALID_HIERARCHY", `custom.move_node: cannot move node ${args.nodeId} into ${args.parentId} — the target parent is the node itself or one of its own descendants, which would create a hierarchy cycle.`, { nodeId: args.nodeId, parentId: args.parentId });
+  }
 
   const preserve = args.preserveVisualPosition !== false;
   const absBefore = preserve ? toMat3(node.absoluteTransform) : null;
@@ -1438,7 +1444,7 @@ async function handleInstanceOverride(args) {
     if (p.characters !== undefined) {
       if (target.type !== "TEXT") throw new Error(`custom.instance_override: "characters" override target ${target.id} is type "${target.type}", not "TEXT".`);
       if (target.fontName === figma.mixed) {
-        throw new Error(`custom.instance_override: target text node ${target.id} has mixed fonts across its characters — setting "characters" is only supported on single-font text nodes.`);
+        throw pluginError("FONT_ERROR", `custom.instance_override: target text node ${target.id} has mixed fonts across its characters — setting "characters" is only supported on single-font text nodes.`, { nodeId: target.id });
       }
       await figma.loadFontAsync(target.fontName);
       target.characters = p.characters;

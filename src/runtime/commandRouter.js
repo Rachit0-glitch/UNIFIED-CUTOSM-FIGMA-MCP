@@ -1,5 +1,47 @@
+import { createHash, randomUUID } from "node:crypto";
 import { ERROR_CODES, UnifiedError, errorShape } from "../errors.js";
 import { createRequestId, PROTOCOL_VERSION } from "./protocol.js";
+import { checkPayloadShape } from "./limits.js";
+
+/**
+ * Block B §3 — the operation model. Every mutating (and, for consistency, every) capability call now
+ * carries enough identity to answer "what exactly was attempted, and can it safely be attempted
+ * again?" without introducing a new subsystem — this is purely additive metadata on the existing
+ * response shape (see CommandRouter.execute()'s returned `operation` field), so no Block A test that
+ * reads `result.ok`/`result.result`/`result.error` etc. is affected.
+ *
+ * `operationId` identifies the LOGICAL attempt (stable across this one `execute()` call); `requestId`
+ * (unchanged, pre-existing) identifies the wire-level envelope sent to the plugin. They are equal for
+ * every capability today (one envelope per operation), but are kept as distinct concepts because a
+ * future retry/reconciliation attempt for the SAME operationId would mint a new requestId.
+ */
+export function fingerprintPayload(payload) {
+  // A simple, deterministic content fingerprint — not a security hash, just an identity aid so two
+  // operations targeting the same capability+payload can be recognized as "the same attempt" for
+  // reconciliation purposes (see docs/BLOCK_B_RETRY_RECONCILIATION.md).
+  try {
+    return createHash("sha256").update(JSON.stringify(payload ?? {})).digest("hex").slice(0, 16);
+  } catch {
+    return null;
+  }
+}
+
+/** Best-effort extraction of "what node/target did this operation act on," for diagnostics — never
+ * throws, never required to be present (many capabilities, e.g. plumb.outline, have no single target). */
+function extractTarget(payload) {
+  if (!payload || typeof payload !== "object") return null;
+  return payload.nodeId ?? payload.instanceId ?? payload.componentId ?? null;
+}
+
+export const OPERATION_STATUS = Object.freeze({
+  QUEUED: "queued",
+  RUNNING: "running",
+  SUCCEEDED: "succeeded",
+  FAILED: "failed",
+  TIMED_OUT: "timed_out",
+  RECONCILED: "reconciled"
+});
+
 
 export class CommandRouter {
   constructor({ registry, adapters, bridge, queue, logger }) {
@@ -28,6 +70,12 @@ export class CommandRouter {
 
   async execute({ capability: capabilityId, payload = {}, metadata = {} } = {}) {
     const capability = this.registry.get(capabilityId);
+    // Block B §25/§26 — runs BEFORE the capability's own (possibly recursive) Zod schema ever sees
+    // this payload; see limits.js's checkPayloadShape for why this must exist and must be iterative.
+    const shapeCheck = checkPayloadShape(payload);
+    if (!shapeCheck.ok) {
+      throw new UnifiedError(ERROR_CODES.INVALID_PAYLOAD, `${capability.id}: ${shapeCheck.reason}`, { source: capability.family, capability: capability.id });
+    }
     // Block A / A10 — a "compound" capability (custom.measure/custom.diff/custom.verify) doesn't map
     // to one protocol envelope at all: it needs to read N existing nodes (each its own bridge round
     // trip, still queued individually to preserve the single-plugin-connection FIFO invariant) and then
@@ -44,6 +92,7 @@ export class CommandRouter {
         );
       }
       const requestId = createRequestId();
+      const operationId = randomUUID();
       const startedAt = Date.now();
       let result;
       let error = null;
@@ -64,7 +113,9 @@ export class CommandRouter {
         durationMs: Date.now() - startedAt,
         verification: null,
         runtime: this.bridge.status(),
-        queue: this.queue.status()
+        queue: this.queue.status(),
+        // Block B §3 — operation identity/status, additive (never removes any existing field above).
+        operationRecord: this.#operationRecord({ operationId, capability, payload: parsedPayload.data, startedAt, error })
       };
     }
     const adapter = this.adapters.get(capability.family);
@@ -105,7 +156,8 @@ export class CommandRouter {
         durationMs: Date.now() - startedAt,
         verification: null,
         runtime: this.bridge.status(),
-        queue: this.queue.status()
+        queue: this.queue.status(),
+        operationRecord: this.#operationRecord({ operationId: randomUUID(), capability, payload: parsedPayload.data, startedAt, error: null, dryRun: true })
       };
     }
     this.logger?.event?.({
@@ -115,11 +167,39 @@ export class CommandRouter {
       operation: capability.operation,
       status: "route"
     });
-    const response = await this.queue.enqueue(
-      async () => await this.bridge.execute(envelope, capability.timeoutMs),
-      { requestId, capability: capability.id, family: capability.family, operation: capability.operation }
-    );
+    const operationId = randomUUID();
+    let response;
+    try {
+      response = await this.queue.enqueue(
+        async () => await this.bridge.execute(envelope, capability.timeoutMs),
+        { requestId, operationId, capability: capability.id, family: capability.family, operation: capability.operation }
+      );
+    } catch (queueError) {
+      // Block B §3/§5 — a QUEUE_FULL/QUEUE_WAIT_TIMEOUT rejection never reached the bridge at all (the
+      // command was never sent to Figma), which is real, useful status information distinct from a
+      // COMMAND_TIMEOUT (sent, but no reply in time) — both must still produce a proper operationRecord,
+      // not throw past this point and lose operation identity.
+      const normalized = queueError instanceof UnifiedError ? queueError : new UnifiedError(ERROR_CODES.COMMAND_EXECUTION_FAILED, queueError instanceof Error ? queueError.message : String(queueError), { source: capability.family });
+      const error = errorShape(normalized);
+      const durationMs = Date.now() - startedAt;
+      return {
+        ok: false,
+        capability: capability.id,
+        requestId,
+        family: capability.family,
+        operation: capability.operation,
+        result: null,
+        error,
+        response: null,
+        durationMs,
+        verification: null,
+        runtime: this.bridge.status(),
+        queue: this.queue.status(),
+        operationRecord: this.#operationRecord({ operationId, capability, payload: parsedPayload.data, startedAt, error, neverReachedBridge: true })
+      };
+    }
     const durationMs = Date.now() - startedAt;
+    const error = response.ok ? null : response.error || errorShape(new UnifiedError(ERROR_CODES.COMMAND_EXECUTION_FAILED, `${capability.id} failed.`, { source: capability.family }));
     return {
       ok: response.ok,
       capability: capability.id,
@@ -127,7 +207,7 @@ export class CommandRouter {
       family: capability.family,
       operation: capability.operation,
       result: response.ok ? response.result : null,
-      error: response.ok ? null : response.error || errorShape(new UnifiedError(ERROR_CODES.COMMAND_EXECUTION_FAILED, `${capability.id} failed.`, { source: capability.family })),
+      error,
       response,
       durationMs,
       // H10 — reserved for a future optional read-after-write follow-up (Block A/B territory, not
@@ -135,7 +215,37 @@ export class CommandRouter {
       // to add it — only this field's value would start being populated.
       verification: null,
       runtime: this.bridge.status(),
-      queue: this.queue.status()
+      queue: this.queue.status(),
+      operationRecord: this.#operationRecord({ operationId, capability, payload: parsedPayload.data, startedAt, error })
+    };
+  }
+
+  /**
+   * Block B §3 — builds the operationRecord: enough identity to answer "what exactly was attempted,
+   * and can it safely be attempted again?" `retrySafety` comes from the capability's own metadata (see
+   * runtime/capabilities.js and docs/BLOCK_B_RETRY_RECONCILIATION.md) — this method never decides
+   * retry-safety itself, only reports the capability's declared classification alongside this attempt's
+   * outcome.
+   */
+  #operationRecord({ operationId, capability, payload, startedAt, error, dryRun = false, neverReachedBridge = false }) {
+    let status;
+    if (dryRun) status = OPERATION_STATUS.SUCCEEDED;
+    else if (error === null) status = OPERATION_STATUS.SUCCEEDED;
+    else if (error.code === ERROR_CODES.COMMAND_TIMEOUT || error.code === ERROR_CODES.QUEUE_WAIT_TIMEOUT) status = OPERATION_STATUS.TIMED_OUT;
+    else status = OPERATION_STATUS.FAILED;
+    return {
+      operationId,
+      capability: capability.id,
+      family: capability.family,
+      mutation: capability.mutation,
+      retrySafety: capability.retrySafety || "unclassified",
+      target: extractTarget(payload),
+      payloadFingerprint: fingerprintPayload(payload),
+      status,
+      dryRun,
+      neverReachedBridge,
+      startedAt: new Date(startedAt).toISOString(),
+      completedAt: new Date().toISOString()
     };
   }
 }

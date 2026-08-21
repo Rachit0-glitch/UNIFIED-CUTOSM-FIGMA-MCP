@@ -1,0 +1,127 @@
+{
+  "steps": [
+    {
+      "step": "pair",
+      "ok": true
+    },
+    {
+      "step": "PREFLIGHT: a deliberately invalid plan is rejected BEFORE anything executes",
+      "ok": true
+    },
+    {
+      "step": "PLAN+EXECUTE+CHECKPOINT: structure step succeeded",
+      "ok": true
+    },
+    {
+      "step": "CHECKPOINT: 'structure' reached",
+      "ok": true
+    },
+    {
+      "step": "structure produced real ids for every referenced node",
+      "ok": true
+    },
+    {
+      "step": "PLAN+EXECUTE+CHECKPOINT: all 60 instance-creation steps succeeded",
+      "ok": true
+    },
+    {
+      "step": "CHECKPOINT: 'content' reached",
+      "ok": true
+    },
+    {
+      "step": "INSPECT: features grid contains the component + all created instances as real children",
+      "ok": true,
+      "gridChildCount": 61
+    },
+    {
+      "step": "INSPECT->OVERRIDE: first real instance's title text overridden via custom.instance_override",
+      "ok": true
+    },
+    {
+      "step": "STYLING: custom.create_paint_style creates a real named style",
+      "ok": true
+    },
+    {
+      "step": "STYLING: custom.variables creates a real variable collection",
+      "ok": true
+    },
+    {
+      "step": "STYLING: a real variable was created and bound to a real node's fill",
+      "ok": true
+    },
+    {
+      "step": "STYLING: custom.set_mask applies a real mask to the shape created earlier",
+      "ok": true
+    },
+    {
+      "step": "MEASURE: bounds mode returns real geometry for header and grid",
+      "ok": true
+    },
+    {
+      "step": "MEASURE: containment mode confirms the first instance sits within the grid's bounds",
+      "ok": true
+    },
+    {
+      "step": "DIFF: a deliberate width mismatch (999999 vs real) is detected, not silently ignored",
+      "ok": true
+    },
+    {
+      "step": "CORRECT: a real corrective patch applied to the header",
+      "ok": true
+    },
+    {
+      "step": "CORRECT: corrective patch reverted cleanly",
+      "ok": true
+    },
+    {
+      "step": "VERIFY: expectations across header/grid/instance all match real state",
+      "ok": true,
+      "realInstanceWidth": 229
+    },
+    {
+      "step": "VERIFY AGAIN: identical re-verification is stable (no drift between the two runs)",
+      "ok": true
+    },
+    {
+      "step": "FAIL: a plan step with a nonexistent componentId fails cleanly, blocking its dependent",
+      "ok": true,
+      "badInstStatus": "failed"
+    },
+    {
+      "step": "INSPECT STATE: the failed instance-creation did NOT mutate the grid (child count unchanged)",
+      "ok": true,
+      "countAfterFailure": 61
+    },
+    {
+      "step": "RECONCILE+RESUME: with the real componentId, both steps now succeed",
+      "ok": true
+    },
+    {
+      "step": "VERIFY: grid now has exactly one MORE child than before the failure (the recovered instance)",
+      "ok": true
+    },
+    {
+      "step": "FINAL: plumb.outline (a different backend family, through the SAME plugin) sees the built page",
+      "ok": true,
+      "error": null
+    },
+    {
+      "step": "FINAL: plumb.components cross-references the real Card component and its instance count",
+      "ok": true,
+      "error": null,
+      "instanceCount": 61
+    },
+    {
+      "step": "SCALE: the built landing page contains several hundred real Figma nodes",
+      "ok": true,
+      "totalNodeCount": 289
+    },
+    {
+      "step": "CLEANUP: whole landing page deleted in one call",
+      "ok": true
+    }
+  ],
+  "ok": true,
+  "cardCount": 60,
+  "structureCreatedCount": 45
+}

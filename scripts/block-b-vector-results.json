@@ -1,0 +1,51 @@
+{
+  "steps": [
+    {
+      "step": "pair",
+      "ok": true
+    },
+    {
+      "step": "CREATE: 2 real VECTOR nodes (closed path w/ hole, open path), rotation, fill, stroke",
+      "ok": true
+    },
+    {
+      "step": "READ: triangle node is a real VECTOR with vectorPaths, correct fill/stroke/rotation read back",
+      "ok": true
+    },
+    {
+      "step": "READ: open zigzag path is a real VECTOR, no fill (stroke-only), vectorPaths present",
+      "ok": true
+    },
+    {
+      "step": "TRANSFORM: resize + reposition a vector node lands correctly",
+      "ok": true
+    },
+    {
+      "step": "MEASURE: real bounds for both vector nodes",
+      "ok": true
+    },
+    {
+      "step": "DIFF: detects a deliberate mismatch on a vector node's geometry",
+      "ok": true
+    },
+    {
+      "step": "VERIFY: matches the post-transform vector state",
+      "ok": true
+    },
+    {
+      "step": "RECONCILE: re-applying the identical vector doc in sync mode updates existing nodes, creates none",
+      "ok": true,
+      "created": 0,
+      "updated": 3
+    },
+    {
+      "step": "post-reconcile read: vector node still exists with valid geometry (sync correctly re-applied the authored width, a real and expected sync-mode behavior, not corruption)",
+      "ok": true
+    },
+    {
+      "step": "cleanup: vector composition deleted and confirmed absent",
+      "ok": false
+    }
+  ],
+  "ok": false
+}

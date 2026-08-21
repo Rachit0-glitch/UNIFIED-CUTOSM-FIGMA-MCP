@@ -10,6 +10,11 @@ src/runtime/capabilities.js
 
 It is the source of truth for what the production Unified runtime advertises and can execute.
 
+**Block B**: every capability below is also reachable through `unified_execute_plan` — an ordered,
+already-decided list of these same capability steps, executed through the same `CommandRouter`, with
+dependency ordering, checkpoints, and resumability. It is not a new capability, just a second way to
+invoke the ones listed here. See `docs/BLOCK_B_ARCHITECTURE.md`.
+
 ## Supported Capabilities
 
 | Capability | Family | Operation | Mutation | Notes |

@@ -1,0 +1,41 @@
+{
+  "steps": [
+    {
+      "step": "pair",
+      "ok": true
+    },
+    {
+      "step": "planA: preflight ok",
+      "ok": true
+    },
+    {
+      "step": "planA: step succeeded, checkpoint reached",
+      "ok": true
+    },
+    {
+      "step": "planA: target stayed null (payload had no nodeId) but createdIds captured the real created id",
+      "ok": true
+    },
+    {
+      "step": "planA: createdTargets surfaces the same id at the run level",
+      "ok": true
+    },
+    {
+      "step": "planB: dependency ordering — verify ran AFTER patch, both succeeded",
+      "ok": true
+    },
+    {
+      "step": "planB: both checkpoints reached in order",
+      "ok": true
+    },
+    {
+      "step": "planC: failed dependency blocks the dependent step (never silently skipped, never executed)",
+      "ok": true
+    },
+    {
+      "step": "resume: with the underlying issue fixed, both steps now succeed (recovery works through the real MCP tool, not just the fake-router unit test)",
+      "ok": true
+    }
+  ],
+  "ok": true
+}

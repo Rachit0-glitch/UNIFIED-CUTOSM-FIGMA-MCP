@@ -326,7 +326,48 @@ const CustomSetMaskSchema = z
   })
   .strict();
 
-export const STAGE4_CAPABILITIES = Object.freeze([
+/**
+ * Block B §4 — retry-safety classification, per capability. Determines the safe recovery action when
+ * a mutating call's outcome is ambiguous (e.g. COMMAND_TIMEOUT — sent, no reply in time, real Figma
+ * state unknown). Applied as a post-processing step below (RAW_CAPABILITIES.map(...)) rather than a
+ * field on every object literal, so this is the single source of truth — see
+ * docs/BLOCK_B_RETRY_RECONCILIATION.md for the full reasoning and the real-Figma test proving the
+ * "reconciliation" class (custom.design's mode:"sync" reconciling with zero duplication, verified at
+ * 901-node scale in Block A and again with vectors in Block B).
+ *   - "natural":       re-running with the SAME payload is always safe — it either has the same effect
+ *                       twice (harmless) or fails cleanly the second time (e.g. NODE_NOT_FOUND after an
+ *                       already-successful delete), never a duplicate/corrupt mutation.
+ *   - "operationKey":  safe ONLY when the caller supplies a stable operationKey — the plugin checks
+ *                       for an existing tagged result before creating a new one (live-verified for
+ *                       custom.group/custom.create_component_set in Block A).
+ *   - "reconciliation": NOT safe to blind-retry as authored; the capability has a distinct, safe
+ *                       retry MODE the caller must switch to (custom.design: mode:"create" -> "sync").
+ *   - "unsafe":         no built-in dedup mechanism exists today. A blind retry after an ambiguous
+ *                       failure CAN create a duplicate. The caller must inspect real Figma state first
+ *                       (read back the expected target) before deciding whether to retry.
+ */
+const RETRY_SAFETY = Object.freeze({
+  "custom.design": "reconciliation",
+  "custom.patch_node": "natural",
+  "custom.delete_node": "natural",
+  "custom.reorder_node": "natural",
+  "custom.move_node": "natural",
+  "custom.boolean": "unsafe", // no check-before-create despite accepting resultKey — the key only tags the result AFTER creation
+  "custom.group": "operationKey",
+  "custom.ungroup": "natural",
+  "custom.create_component_set": "operationKey",
+  "custom.create_paint_style": "natural", // idempotent by name: create-or-update
+  "custom.styles": "natural", // idempotent by name for create; apply/unapply/delete are naturally idempotent
+  "custom.text_range": "natural",
+  "custom.component_property": "unsafe", // action:"add" has no dedup — edit/delete/list are natural, but the capability as a whole must be treated as unsafe
+  "custom.instance_override": "natural",
+  "custom.instance_swap": "natural",
+  "custom.create_instance": "unsafe", // no dedup — a blind retry creates a second real INSTANCE
+  "custom.variables": "unsafe", // create_collection/create_variable have no dedup — set_value/bind/unbind/delete_* are natural, but classify conservatively
+  "custom.set_mask": "natural"
+});
+
+const RAW_CAPABILITIES = [
   {
     id: "plumb.status",
     family: "plumb",
@@ -622,7 +663,11 @@ export const STAGE4_CAPABILITIES = Object.freeze([
     schema: CustomSetMaskSchema
   },
   ...COMPOUND_CAPABILITIES
-]);
+];
+
+export const STAGE4_CAPABILITIES = Object.freeze(
+  RAW_CAPABILITIES.map((capability) => Object.freeze({ ...capability, retrySafety: RETRY_SAFETY[capability.id] || (capability.mutation ? "unclassified" : "natural") }))
+);
 
 export class CapabilityRegistry {
   constructor(capabilities = STAGE4_CAPABILITIES) {

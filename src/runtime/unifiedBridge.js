@@ -21,6 +21,13 @@ export class UnifiedRuntimeBridge {
     this.recentTimeouts = new Map();
     this.orphanResponseCount = 0;
     this.lastOrphanResponse = null;
+    // Block B §14/§16 — a monotonic counter identifying which physical plugin connection ("session")
+    // is currently paired. Starts at 0 (no connection yet); becomes 1 on the first real connection, 2
+    // on the first reconnect, etc. Exposed in status() and attached to timeout/orphan diagnostics so a
+    // human or the calling LLM can tell whether a given event happened before or after a reconnect —
+    // never used to gate correctness (requestId correlation, already unique per attempt, remains the
+    // only thing that decides whether a response matches a pending request).
+    this.connectionGeneration = 0;
   }
 
   async start() {
@@ -38,6 +45,9 @@ export class UnifiedRuntimeBridge {
         this.pluginVersion = null;
         this.pluginProtocolVersion = null;
         this.connectedAt = new Date().toISOString();
+        this.connectionGeneration += 1;
+        const generation = this.connectionGeneration;
+        this.logger?.event?.({ status: "plugin_connected", connectionGeneration: generation });
         ws.on("message", (raw) => this.#handleMessage(raw.toString()));
         ws.on("close", () => {
           if (this.socket === ws) {
@@ -45,6 +55,7 @@ export class UnifiedRuntimeBridge {
             this.pluginVersion = null;
             this.pluginProtocolVersion = null;
             this.connectedAt = null;
+            this.logger?.event?.({ status: "plugin_disconnected", connectionGeneration: generation });
             this.#rejectPending(new UnifiedError(ERROR_CODES.PLUGIN_DISCONNECTED, "Unified Figma plugin disconnected."));
           }
         });
@@ -65,6 +76,8 @@ export class UnifiedRuntimeBridge {
       pluginProtocolVersion: this.pluginProtocolVersion,
       pendingRequests: this.pending.size,
       connectedAt: this.connectedAt,
+      // Block B §14/§16 — which physical plugin connection is currently paired (0 = never connected).
+      connectionGeneration: this.connectionGeneration,
       // Block A / A11 timeout investigation diagnostics — see docs/BLOCK_A_LIMITATIONS.md.
       diagnostics: {
         orphanResponseCount: this.orphanResponseCount,
@@ -80,6 +93,7 @@ export class UnifiedRuntimeBridge {
       throw new UnifiedError(ERROR_CODES.PLUGIN_DISCONNECTED, `Unified Figma plugin is not paired on ws://127.0.0.1:${this.port}.`);
     }
     const sentAt = Date.now();
+    const sentGeneration = this.connectionGeneration;
     return await new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(envelope.requestId);
@@ -88,7 +102,7 @@ export class UnifiedRuntimeBridge {
         // #handleMessage's orphan-response branch below) instead of vanishing with zero trace. This is
         // the specific mechanism that would explain "operation actually succeeded, caller saw
         // COMMAND_TIMEOUT" — see docs/BLOCK_A_LIMITATIONS.md.
-        this.recentTimeouts.set(envelope.requestId, { envelope, sentAt, timedOutAt: Date.now() });
+        this.recentTimeouts.set(envelope.requestId, { envelope, sentAt, sentGeneration, timedOutAt: Date.now() });
         if (this.recentTimeouts.size > 50) {
           const oldest = this.recentTimeouts.keys().next().value;
           this.recentTimeouts.delete(oldest);
@@ -99,11 +113,12 @@ export class UnifiedRuntimeBridge {
           family: envelope.family,
           operation: envelope.operation,
           waitedMs: Date.now() - sentAt,
-          timeoutMs
+          timeoutMs,
+          connectionGeneration: sentGeneration
         });
         reject(new UnifiedError(ERROR_CODES.COMMAND_TIMEOUT, `Unified runtime command "${envelope.family}.${envelope.operation}" timed out after ${timeoutMs}ms.`));
       }, timeoutMs);
-      this.pending.set(envelope.requestId, { resolve, reject, timer, envelope, sentAt });
+      this.pending.set(envelope.requestId, { resolve, reject, timer, envelope, sentAt, sentGeneration });
       this.socket.send(JSON.stringify({ type: "command", envelope }));
     });
   }
